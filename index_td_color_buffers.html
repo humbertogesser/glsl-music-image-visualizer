@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TD Color Buffers - Audio Reactive</title>
+  <style>
+    :root {
+      --bg: #000;
+      --fg: #fff;
+      --line: #2a2a2a;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: monospace;
+      overflow: hidden;
+    }
+
+    #gl {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+
+    .panel {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      width: min(360px, calc(100vw - 24px));
+      background: rgba(0, 0, 0, 0.88);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      z-index: 2;
+      max-height: calc(100vh - 24px);
+      overflow-y: auto;
+    }
+
+    .title {
+      margin: 0 0 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #a0a0a0;
+    }
+
+    .row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+
+    input[type="file"],
+    input[type="range"],
+    button {
+      width: 100%;
+    }
+
+    input[type="file"],
+    button {
+      border: 0;
+      border-radius: 4px;
+      background: #050505;
+      color: #fff;
+      font-size: 11px;
+      padding: 7px 9px;
+      text-transform: uppercase;
+    }
+
+    button {
+      cursor: pointer;
+      width: auto;
+      flex: 1 1 auto;
+    }
+
+    button:hover,
+    input[type="file"]:hover {
+      background: #fff;
+      color: #000;
+    }
+
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      text-transform: uppercase;
+      color: #b2b2b2;
+      letter-spacing: 0.06em;
+    }
+
+    .meter {
+      display: grid;
+      grid-template-columns: 52px 1fr;
+      gap: 8px;
+      align-items: center;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+
+    .bar {
+      height: 7px;
+      border: 1px solid #2f2f2f;
+      background: #111;
+      overflow: hidden;
+    }
+
+    .fill {
+      height: 100%;
+      width: 0%;
+      background: #fff;
+      transition: width 0.06s linear;
+    }
+
+    .status {
+      margin-top: 6px;
+      font-size: 11px;
+      color: #8e8e8e;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+
+  <div class="panel">
+    <h1 class="title">TouchDesigner Style: GLSL Color Buffers</h1>
+
+    <div class="row">
+      <input id="audioFile" type="file" accept="audio/*" />
+      <input id="imageFile" type="file" accept="image/*" />
+    </div>
+
+    <div class="row">
+      <button id="playBtn" type="button">Play</button>
+      <button id="pauseBtn" type="button">Pause</button>
+      <button id="resetBtn" type="button">Reset Buffer</button>
+    </div>
+
+    <div class="meta"><span>Sensitivity</span><span id="sensLabel">35%</span></div>
+    <div class="row">
+      <input id="sensitivity" type="range" min="0" max="100" step="1" value="35" />
+    </div>
+
+    <div class="meter"><span>Bass</span><div class="bar"><div id="bassFill" class="fill"></div></div></div>
+    <div class="meter"><span>Mid</span><div class="bar"><div id="midFill" class="fill"></div></div></div>
+    <div class="meter"><span>Treble</span><div class="bar"><div id="trebleFill" class="fill"></div></div></div>
+    <div class="meter"><span>Level</span><div class="bar"><div id="levelFill" class="fill"></div></div></div>
+
+    <div id="status" class="status">Load audio and press Play.</div>
+  </div>
+
+  <audio id="audio" crossorigin="anonymous"></audio>
+
+  <script>
+    const canvas = document.getElementById("gl");
+    const gl = canvas.getContext("webgl");
+    if (!gl) throw new Error("WebGL not supported");
+
+    const vertexSrc = `
+      attribute vec2 a_pos;
+      varying vec2 v_uv;
+      void main() {
+        v_uv = a_pos * 0.5 + 0.5;
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+      }
+    `;
+
+    const simFrag = `
+      precision highp float;
+      varying vec2 v_uv;
+      uniform float u_time;
+      uniform vec2 u_resolution;
+      uniform sampler2D u_prev;
+      uniform sampler2D u_image;
+      uniform float u_hasImage;
+      uniform vec2 u_imageSize;
+      uniform float u_bass;
+      uniform float u_mid;
+      uniform float u_treble;
+      uniform float u_level;
+      uniform float u_sensitivity;
+
+      float hash(vec2 p) {
+        p = fract(p * vec2(123.34, 345.45));
+        p += dot(p, p + 34.345);
+        return fract(p.x * p.y);
+      }
+
+      float gridLine(vec2 coord, float width) {
+        vec2 cell = abs(fract(coord) - 0.5);
+        float d = min(cell.x, cell.y);
+        return 1.0 - smoothstep(0.0, width, d);
+      }
+
+      vec2 coverUv(vec2 uv, vec2 screen, vec2 image) {
+        float rs = screen.x / max(screen.y, 1.0);
+        float ri = image.x / max(image.y, 1.0);
+        if (rs > ri) {
+          float sc = ri / rs;
+          return vec2(uv.x, (uv.y - 0.5) * sc + 0.5);
+        }
+        float sc = rs / ri;
+        return vec2((uv.x - 0.5) * sc + 0.5, uv.y);
+      }
+
+      void main() {
+        vec2 uv = v_uv;
+        vec2 p = uv * 2.0 - 1.0;
+        p.x *= u_resolution.x / max(u_resolution.y, 1.0);
+
+        float sens = mix(0.25, 1.25, clamp(u_sensitivity, 0.0, 1.0));
+        float bass = u_bass * sens;
+        float mid = u_mid * sens;
+        float treble = u_treble * sens;
+        float level = u_level * sens;
+
+        float th = atan(p.y, p.x);
+        float r = length(p);
+        float spin = 0.05 + mid * 0.55;
+        float zoom = 1.0 + sin(u_time * (0.3 + level * 0.6)) * (0.02 + bass * 0.1);
+
+        vec2 flow = vec2(
+          sin(u_time * (1.2 + treble * 4.0) + p.y * 6.0),
+          cos(u_time * (1.0 + bass * 3.0) - p.x * 5.0)
+        ) * (0.001 + 0.018 * level);
+
+        vec2 prevUv = uv;
+        prevUv -= (p * (zoom - 1.0)) * 0.25;
+        prevUv += flow;
+
+        float ang = th + spin * (0.4 + r * 1.2);
+        vec2 swirl = vec2(cos(ang), sin(ang)) * r;
+        prevUv += (swirl - p) * (0.008 + mid * 0.03);
+
+        vec3 prev = texture2D(u_prev, clamp(prevUv, 0.0, 1.0)).rgb;
+        prev *= 0.985 - level * 0.06;
+
+        vec3 inject = vec3(0.0);
+        if (u_hasImage > 0.5) {
+          vec2 iuv = coverUv(uv, u_resolution, u_imageSize);
+          vec2 centered = iuv - 0.5;
+          float zPhase = fract(u_time * (0.08 + level * 0.22));
+          float z0 = exp2(zPhase * (3.2 + bass * 1.6));
+          float z1 = z0 * 2.0;
+          float zBlend = smoothstep(0.0, 1.0, zPhase);
+
+          float imgSpin = u_time * (0.06 + mid * 0.28);
+          mat2 rot = mat2(cos(imgSpin), -sin(imgSpin), sin(imgSpin), cos(imgSpin));
+          vec2 warped = rot * centered;
+          vec2 uv0 = fract(warped * z0 + 0.5);
+          vec2 uv1 = fract(warped * z1 + 0.5);
+
+          vec2 w = vec2(
+            sin(u_time * 0.9 + p.y * (4.0 + mid * 8.0)),
+            cos(u_time * 1.1 + p.x * (3.0 + bass * 7.0))
+          ) * (0.0015 + level * 0.012);
+
+          vec3 img0 = texture2D(u_image, fract(uv0 + w)).rgb;
+          vec3 img1 = texture2D(u_image, fract(uv1 + w)).rgb;
+          inject = mix(img0, img1, zBlend);
+        } else {
+          vec2 ndc = uv * 2.0 - 1.0;
+          ndc.x *= u_resolution.x / max(u_resolution.y, 1.0);
+
+          float camH = 1.2 + sin(u_time * 0.18) * 0.08;
+          vec3 ro = vec3(0.0, camH, u_time * (1.2 + level * 2.2));
+          vec3 rd = normalize(vec3(ndc.x, -0.72 + ndc.y * 0.82, 1.4));
+
+          float den = max(-rd.y, 0.001);
+          float tFloor = ro.y / den;
+          vec3 hit = ro + rd * tFloor;
+          vec2 world = hit.xz;
+
+          float wMain = 0.02 + bass * 0.03;
+          float wFine = 0.012 + treble * 0.015;
+          float gMain = gridLine(world * (1.0 + mid * 0.9), wMain);
+          float gFine = gridLine(world * (3.0 + treble * 2.0), wFine);
+          float gFar = gridLine(world * 0.25, 0.045 + bass * 0.035);
+
+          float distFade = exp(-tFloor * 0.035);
+          float horizon = smoothstep(-0.35, 0.35, ndc.y);
+          float sweep = 0.5 + 0.5 * sin(hit.z * 0.1 - u_time * (1.5 + bass * 3.5));
+          float mono = (gMain * 0.65 + gFine * 0.45 + gFar * 0.35) * distFade;
+          mono += sweep * 0.08 * distFade + horizon * 0.05;
+          inject = vec3(clamp(mono, 0.0, 1.0));
+        }
+
+        float n = hash(floor(uv * (140.0 - level * 80.0)) + floor(u_time * 20.0));
+        float pulse = smoothstep(0.55 - bass * 0.4, 1.0, n);
+        float luma = dot(inject, vec3(0.299, 0.587, 0.114));
+        float mask = clamp(luma * (0.45 + level * 0.7) + pulse * (0.08 + treble * 0.25), 0.0, 1.0);
+
+        vec3 col = mix(prev, inject, mask * (0.12 + level * 0.35));
+
+        vec2 q = (uv - 0.5) * 2.0;
+        float vignette = 1.0 - dot(q, q) * 0.28;
+        col *= clamp(vignette, 0.0, 1.0);
+
+        gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+      }
+    `;
+
+    const displayFrag = `
+      precision highp float;
+      varying vec2 v_uv;
+      uniform vec2 u_resolution;
+      uniform sampler2D u_scene;
+      uniform float u_bass;
+      uniform float u_mid;
+      uniform float u_treble;
+      uniform float u_level;
+
+      vec3 sampleScene(vec2 uv) {
+        return texture2D(u_scene, clamp(uv, 0.0, 1.0)).rgb;
+      }
+
+      void main() {
+        vec2 uv = v_uv;
+        vec2 px = vec2(1.0 / max(u_resolution.x, 1.0), 1.0 / max(u_resolution.y, 1.0));
+        vec2 offset = vec2(px.x, px.y) * (0.8 + u_treble * 2.5);
+
+        vec3 base = sampleScene(uv);
+        vec3 blur = (
+          sampleScene(uv + vec2(offset.x, 0.0)) +
+          sampleScene(uv - vec2(offset.x, 0.0)) +
+          sampleScene(uv + vec2(0.0, offset.y)) +
+          sampleScene(uv - vec2(0.0, offset.y))
+        ) * 0.25;
+
+        vec3 hi = max(base, blur * (0.95 + u_mid * 0.6));
+        vec2 d = px * (0.6 + u_level * 1.8);
+        float edge = length(sampleScene(uv + d) - sampleScene(uv - d)) * (0.7 + u_treble * 1.4);
+        vec3 col = mix(hi, vec3(edge), 0.18 + u_bass * 0.2);
+
+        col = pow(clamp(col, 0.0, 1.0), vec3(0.95));
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
+    function compile(type, src) {
+      const sh = gl.createShader(type);
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        const msg = gl.getShaderInfoLog(sh) || "shader compile error";
+        gl.deleteShader(sh);
+        throw new Error(msg);
+      }
+      return sh;
+    }
+
+    function makeProgram(vsSrc, fsSrc) {
+      const vs = compile(gl.VERTEX_SHADER, vsSrc);
+      const fs = compile(gl.FRAGMENT_SHADER, fsSrc);
+      const pr = gl.createProgram();
+      gl.attachShader(pr, vs);
+      gl.attachShader(pr, fs);
+      gl.linkProgram(pr);
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
+      if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) {
+        const msg = gl.getProgramInfoLog(pr) || "program link error";
+        gl.deleteProgram(pr);
+        throw new Error(msg);
+      }
+      return pr;
+    }
+
+    function makeTarget(w, h) {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+      const fbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return { tex, fbo };
+    }
+
+    const quad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([
+        -1, -1,
+         1, -1,
+        -1,  1,
+        -1,  1,
+         1, -1,
+         1,  1,
+      ]),
+      gl.STATIC_DRAW
+    );
+
+    const simProgram = makeProgram(vertexSrc, simFrag);
+    const dispProgram = makeProgram(vertexSrc, displayFrag);
+
+    function bindQuad(program) {
+      gl.useProgram(program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+      const aPos = gl.getAttribLocation(program, "a_pos");
+      gl.enableVertexAttribArray(aPos);
+      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+    }
+
+    let w = 0;
+    let h = 0;
+    let ping = null;
+    let pong = null;
+
+    function clearTarget(target) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+      gl.viewport(0, 0, w, h);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const nw = Math.floor(innerWidth * dpr);
+      const nh = Math.floor(innerHeight * dpr);
+      if (nw === w && nh === h) return;
+      w = nw;
+      h = nh;
+      canvas.width = w;
+      canvas.height = h;
+      gl.viewport(0, 0, w, h);
+      if (ping) {
+        gl.deleteFramebuffer(ping.fbo);
+        gl.deleteTexture(ping.tex);
+      }
+      if (pong) {
+        gl.deleteFramebuffer(pong.fbo);
+        gl.deleteTexture(pong.tex);
+      }
+      ping = makeTarget(w, h);
+      pong = makeTarget(w, h);
+      clearTarget(ping);
+      clearTarget(pong);
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    const audioEl = document.getElementById("audio");
+    const audioFile = document.getElementById("audioFile");
+    const imageFile = document.getElementById("imageFile");
+    const playBtn = document.getElementById("playBtn");
+    const pauseBtn = document.getElementById("pauseBtn");
+    const resetBtn = document.getElementById("resetBtn");
+    const sensitivityInput = document.getElementById("sensitivity");
+    const sensLabel = document.getElementById("sensLabel");
+    const status = document.getElementById("status");
+
+    const bassFill = document.getElementById("bassFill");
+    const midFill = document.getElementById("midFill");
+    const trebleFill = document.getElementById("trebleFill");
+    const levelFill = document.getElementById("levelFill");
+
+    let audioCtx = null;
+    let analyser = null;
+    let sourceNode = null;
+    let freqData = null;
+    let sensitivity = 0.35;
+
+    const smooth = { bass: 0, mid: 0, treble: 0, level: 0 };
+
+    const imageTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, imageTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([255, 255, 255, 255])
+    );
+    let hasImage = 0;
+    let imageSize = { width: 1, height: 1 };
+
+    function clamp01(v) {
+      return Math.max(0, Math.min(1, v));
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function smoothPeak(current, target, attack, release) {
+      return lerp(current, target, target > current ? attack : release);
+    }
+
+    function freqToBin(freq, sampleRate, fftSize) {
+      const nyquist = sampleRate / 2;
+      return Math.max(0, Math.min((fftSize / 2) - 1, Math.round((freq / nyquist) * (fftSize / 2))));
+    }
+
+    function avgBand(data, from, to) {
+      let sum = 0;
+      let count = 0;
+      for (let i = from; i <= to; i++) {
+        sum += data[i];
+        count++;
+      }
+      return count ? sum / count : 0;
+    }
+
+    function updateSensitivity() {
+      sensitivity = clamp01(Number(sensitivityInput.value) / 100);
+      sensLabel.textContent = `${Math.round(sensitivity * 100)}%`;
+    }
+    sensitivityInput.addEventListener("input", updateSensitivity);
+    updateSensitivity();
+
+    function updateMeters(v) {
+      bassFill.style.width = `${(v.bass * 100).toFixed(1)}%`;
+      midFill.style.width = `${(v.mid * 100).toFixed(1)}%`;
+      trebleFill.style.width = `${(v.treble * 100).toFixed(1)}%`;
+      levelFill.style.width = `${(v.level * 100).toFixed(1)}%`;
+    }
+
+    function setupAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (!sourceNode) {
+        sourceNode = audioCtx.createMediaElementSource(audioEl);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.9;
+        freqData = new Uint8Array(analyser.frequencyBinCount);
+        sourceNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+      }
+    }
+
+    async function ensureAudioReady() {
+      setupAudio();
+      if (audioCtx.state === "suspended") await audioCtx.resume();
+    }
+
+    function sampleAudio() {
+      if (!analyser || !audioCtx || !freqData) {
+        return { bass: 0, mid: 0, treble: 0, level: 0 };
+      }
+      analyser.getByteFrequencyData(freqData);
+      const sr = audioCtx.sampleRate;
+      const fft = analyser.fftSize;
+      const bass = avgBand(freqData, freqToBin(20, sr, fft), freqToBin(140, sr, fft)) / 255;
+      const mid = avgBand(freqData, freqToBin(140, sr, fft), freqToBin(2000, sr, fft)) / 255;
+      const treble = avgBand(freqData, freqToBin(2000, sr, fft), freqToBin(12000, sr, fft)) / 255;
+      const level = avgBand(freqData, 0, freqData.length - 1) / 255;
+
+      const gain = 0.3 + sensitivity * 0.9;
+      const bassT = clamp01(Math.pow(clamp01((bass - 0.07) / 0.62), 1.4) * 0.72 * gain);
+      const midT = clamp01(Math.pow(clamp01((mid - 0.10) / 0.58), 1.45) * 0.66 * gain);
+      const trebT = clamp01(Math.pow(clamp01((treble - 0.08) / 0.55), 1.33) * 0.68 * gain);
+      const levT = clamp01(Math.pow(clamp01((level - 0.05) / 0.55), 1.2) * 0.64 * gain);
+
+      smooth.bass = smoothPeak(smooth.bass, bassT, 0.22, 0.13);
+      smooth.mid = smoothPeak(smooth.mid, midT, 0.2, 0.14);
+      smooth.treble = smoothPeak(smooth.treble, trebT, 0.22, 0.15);
+      smooth.level = smoothPeak(smooth.level, levT, 0.24, 0.14);
+      return smooth;
+    }
+
+    function loadImageToTexture(src, label, revoke = false) {
+      const img = new Image();
+      img.onload = () => {
+        gl.bindTexture(gl.TEXTURE_2D, imageTex);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        hasImage = 1;
+        imageSize = { width: img.naturalWidth || 1, height: img.naturalHeight || 1 };
+        status.textContent = `Image loaded: ${label}`;
+        if (revoke) URL.revokeObjectURL(src);
+      };
+      img.onerror = () => {
+        status.textContent = "Could not load image.";
+        if (revoke) URL.revokeObjectURL(src);
+      };
+      img.src = src;
+    }
+
+    audioFile.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      audioEl.src = URL.createObjectURL(file);
+      status.textContent = `Loaded audio: ${file.name}`;
+      await ensureAudioReady();
+    });
+
+    imageFile.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const u = URL.createObjectURL(file);
+      loadImageToTexture(u, file.name, true);
+    });
+
+    playBtn.addEventListener("click", async () => {
+      try {
+        await ensureAudioReady();
+        await audioEl.play();
+        status.textContent = "Playing";
+      } catch {
+        status.textContent = "Load an audio file first.";
+      }
+    });
+
+    pauseBtn.addEventListener("click", () => {
+      audioEl.pause();
+      status.textContent = "Paused";
+    });
+
+    resetBtn.addEventListener("click", () => {
+      clearTarget(ping);
+      clearTarget(pong);
+      status.textContent = "Color buffer reset.";
+    });
+
+    const simU = {
+      time: gl.getUniformLocation(simProgram, "u_time"),
+      resolution: gl.getUniformLocation(simProgram, "u_resolution"),
+      prev: gl.getUniformLocation(simProgram, "u_prev"),
+      image: gl.getUniformLocation(simProgram, "u_image"),
+      hasImage: gl.getUniformLocation(simProgram, "u_hasImage"),
+      imageSize: gl.getUniformLocation(simProgram, "u_imageSize"),
+      bass: gl.getUniformLocation(simProgram, "u_bass"),
+      mid: gl.getUniformLocation(simProgram, "u_mid"),
+      treble: gl.getUniformLocation(simProgram, "u_treble"),
+      level: gl.getUniformLocation(simProgram, "u_level"),
+      sensitivity: gl.getUniformLocation(simProgram, "u_sensitivity"),
+    };
+
+    const dispU = {
+      resolution: gl.getUniformLocation(dispProgram, "u_resolution"),
+      scene: gl.getUniformLocation(dispProgram, "u_scene"),
+      bass: gl.getUniformLocation(dispProgram, "u_bass"),
+      mid: gl.getUniformLocation(dispProgram, "u_mid"),
+      treble: gl.getUniformLocation(dispProgram, "u_treble"),
+      level: gl.getUniformLocation(dispProgram, "u_level"),
+    };
+
+    const t0 = performance.now();
+    function render() {
+      resize();
+      const t = (performance.now() - t0) * 0.001;
+      const levels = sampleAudio();
+      updateMeters(levels);
+
+      // Pass 1: update color buffer (ping-pong simulation).
+      gl.bindFramebuffer(gl.FRAMEBUFFER, pong.fbo);
+      gl.viewport(0, 0, w, h);
+      bindQuad(simProgram);
+      gl.uniform1f(simU.time, t);
+      gl.uniform2f(simU.resolution, w, h);
+      gl.uniform1f(simU.bass, levels.bass);
+      gl.uniform1f(simU.mid, levels.mid);
+      gl.uniform1f(simU.treble, levels.treble);
+      gl.uniform1f(simU.level, levels.level);
+      gl.uniform1f(simU.sensitivity, sensitivity);
+      gl.uniform1f(simU.hasImage, hasImage);
+      gl.uniform2f(simU.imageSize, imageSize.width, imageSize.height);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, ping.tex);
+      gl.uniform1i(simU.prev, 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, imageTex);
+      gl.uniform1i(simU.image, 1);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      // Pass 2: display with lightweight post treatment.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, w, h);
+      bindQuad(dispProgram);
+      gl.uniform2f(dispU.resolution, w, h);
+      gl.uniform1f(dispU.bass, levels.bass);
+      gl.uniform1f(dispU.mid, levels.mid);
+      gl.uniform1f(dispU.treble, levels.treble);
+      gl.uniform1f(dispU.level, levels.level);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, pong.tex);
+      gl.uniform1i(dispU.scene, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      const tmp = ping;
+      ping = pong;
+      pong = tmp;
+      requestAnimationFrame(render);
+    }
+    render();
+  </script>
+</body>
+</html>

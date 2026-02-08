@@ -1,0 +1,2835 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Audio Reactive GLSL Sandbox Shader</title>
+  <style>
+    :root {
+      --bg: #000000;
+      --text: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    #gl {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+
+    .panel {
+      position: fixed;
+      top: 68px;
+      left: 12px;
+      width: min(360px, calc(100vw - 24px));
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.88);
+      border: 1px solid #2b2b2b;
+      border-radius: 6px;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      z-index: 2;
+      transition: opacity 0.3s ease;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #9a9a9a;
+      font-weight: 700;
+    }
+
+    .panel-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .panel-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .btn-compact {
+      padding: 6px 10px;
+      font-size: 11px;
+    }
+
+    .panel.collapsed .panel-body {
+      display: none;
+    }
+
+    .row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .control-row {
+      display: grid;
+      grid-template-columns: 86px 1fr 42px;
+      gap: 8px;
+      align-items: center;
+      margin-top: 2px;
+    }
+
+    .control-label {
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #9a9a9a;
+      user-select: none;
+    }
+
+    .control-value {
+      font-size: 10px;
+      text-align: right;
+      color: #9a9a9a;
+      letter-spacing: 0.04em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .control-row input[type="range"] {
+      width: 100%;
+      margin: 0;
+      accent-color: #ffffff;
+      cursor: pointer;
+    }
+
+    .story-phase {
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #9a9a9a;
+      padding: 0 4px;
+      user-select: none;
+    }
+
+    input[type="file"] {
+      color: var(--text);
+      font-size: 11px;
+      max-width: 100%;
+      width: 100%;
+      text-transform: uppercase;
+    }
+
+    select {
+      color: var(--text);
+      background: #000000;
+      border: 0;
+      border-radius: 5px;
+      padding: 7px 10px;
+      font-size: 11px;
+      min-width: 0;
+      flex: 1 1 160px;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 58px;
+      resize: vertical;
+      color: var(--text);
+      background: #000000;
+      border: 0;
+      border-radius: 5px;
+      padding: 7px 10px;
+      font-size: 11px;
+      font-family: monospace;
+      line-height: 1.35;
+    }
+
+    button {
+      border: 0;
+      border-radius: 5px;
+      background: #000000;
+      color: var(--text);
+      padding: 7px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+
+    button:hover, select:hover, input[type="file"]:hover {
+      background: #ffffff;
+      color: #000000;
+    }
+
+    .meters {
+      margin-top: 8px;
+      display: grid;
+      gap: 6px;
+      max-width: none;
+    }
+
+    .meters.hidden {
+      display: none;
+    }
+
+    .meter {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 8px;
+      align-items: center;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .bar {
+      height: 8px;
+      border: 1px solid var(--line);
+      overflow: hidden;
+      background: #111111;
+    }
+
+    .fill {
+      height: 100%;
+      width: 0%;
+      background: #ffffff;
+      transition: width 0.06s linear;
+    }
+
+    .status {
+      margin-top: 8px;
+      font-size: 11px;
+      opacity: 0.9;
+      min-height: 1.2rem;
+      max-width: none;
+      color: #9a9a9a;
+    }
+
+    .progress {
+      margin-top: 8px;
+      display: grid;
+      gap: 6px;
+      max-width: none;
+    }
+
+    .progress.hidden {
+      display: none;
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      opacity: 0.92;
+    }
+
+    .progress input[type="range"] {
+      width: 100%;
+      margin: 0;
+      accent-color: #ffffff;
+      cursor: pointer;
+    }
+
+    @media (max-width: 680px) {
+      .panel {
+        top: 10px;
+        left: 8px;
+        width: calc(100vw - 16px);
+        max-height: calc(100vh - 20px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+
+  <div class="panel">
+    <div class="panel-top">
+      <h1 class="title">GLSL Sandbox Style</h1>
+      <div class="panel-actions">
+        <button id="togglePanelBtn" class="btn-compact" type="button">Minimize</button>
+        <button id="fullscreenBtn" class="btn-compact" type="button">Fullscreen</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="row">
+        <input id="file" type="file" accept="audio/*" />
+        <input id="imageFile" type="file" accept="image/*" />
+        <button id="playBtn" type="button">Play</button>
+        <button id="pauseBtn" type="button">Pause</button>
+        <button id="downloadVideoBtn" type="button" hidden>Download Video</button>
+      </div>
+      <div class="row">
+        <button id="prevShaderBtn" type="button">Prev Shader</button>
+        <select id="shaderSelect" aria-label="Shader library"></select>
+        <button id="nextShaderBtn" type="button">Next Shader</button>
+      </div>
+      <div class="control-row">
+        <label for="distortionStrength" class="control-label">Distort</label>
+        <input id="distortionStrength" type="range" min="0" max="1" step="0.001" value="0.22" />
+        <span id="distortionStrengthValue" class="control-value">0.220</span>
+      </div>
+      <div class="control-row">
+        <label for="distortionSpeed" class="control-label">Flow Speed</label>
+        <input id="distortionSpeed" type="range" min="0" max="3" step="0.001" value="1.05" />
+        <span id="distortionSpeedValue" class="control-value">1.050</span>
+      </div>
+      <div class="row">
+        <span class="story-phase">story mode: on</span>
+        <span id="storyPhase" class="story-phase">phase: waiting</span>
+      </div>
+      <div class="row">
+        <textarea id="isfInput" placeholder="Paste ISF/GLSL shader source here..."></textarea>
+      </div>
+      <div class="row">
+        <button id="loadIsfBtn" type="button">Load ISF</button>
+      </div>
+      <div id="meters" class="meters hidden">
+        <div class="meter"><span>Bass</span><div class="bar"><div id="bassFill" class="fill"></div></div></div>
+        <div class="meter"><span>Mid</span><div class="bar"><div id="midFill" class="fill"></div></div></div>
+        <div class="meter"><span>Treble</span><div class="bar"><div id="trebleFill" class="fill"></div></div></div>
+        <div class="meter"><span>Level</span><div class="bar"><div id="levelFill" class="fill"></div></div></div>
+      </div>
+      <div id="progressWrap" class="progress hidden">
+        <div class="progress-meta">
+          <span id="currentTime">0:00</span>
+          <span id="totalTime">0:00</span>
+        </div>
+        <input id="progress" type="range" min="0" max="1000" value="0" step="1" aria-label="Music progress" />
+      </div>
+      <div id="status" class="status">Load a song to start (you can use your Slone track).</div>
+    </div>
+  </div>
+
+  <audio id="audio" crossorigin="anonymous"></audio>
+
+  <script>
+    const canvas = document.getElementById("gl");
+    const gl = canvas.getContext("webgl", {
+      antialias: true,
+      powerPreference: "high-performance",
+      alpha: false,
+      preserveDrawingBuffer: false,
+    }) || canvas.getContext("webgl");
+
+    if (!gl) {
+      throw new Error("WebGL not supported in this browser.");
+    }
+    const MAX_DEVICE_DPR = 3;
+    const HD_MIN_PIXELS = 1920 * 1080;
+    const MAX_RENDER_SIZE = Math.min(
+      gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096,
+      gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) || 4096
+    );
+
+    const vertexSrc = `
+      attribute vec2 a_pos;
+      varying vec2 surfacePosition;
+      varying vec2 v_uv;
+      void main() {
+        surfacePosition = a_pos;
+        v_uv = a_pos * 0.5 + 0.5;
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+      }
+    `;
+
+    const zoomBase = `
+      precision highp float;
+      uniform vec2 mouse;
+      uniform float time;
+      uniform vec2 resolution;
+      uniform float u_bass;
+      uniform float u_mid;
+      uniform float u_treble;
+      uniform float u_level;
+      uniform sampler2D u_image;
+      uniform float u_hasImage;
+      uniform vec2 u_imageSize;
+      varying vec2 surfacePosition;
+
+      float rand(vec2 co) {
+        return fract(sin(dot(floor(co.xy), vec2(0.0, 1.0) + tan(time * 0.0001 * (1.0 + u_treble * 3.0)))) * 500.0);
+      }
+
+      vec2 coverUv(vec2 uv, vec2 screen, vec2 image) {
+        float rs = screen.x / screen.y;
+        float ri = max(image.x / max(image.y, 1.0), 0.0001);
+        if (rs > ri) {
+          float scale = ri / rs;
+          return vec2(uv.x, (uv.y - 0.5) * scale + 0.5);
+        }
+        float scale = rs / ri;
+        return vec2((uv.x - 0.5) * scale + 0.5, uv.y);
+      }
+
+      void main(void) {
+        float bassHit = pow(u_bass, 1.35);
+        float midHit = pow(u_mid, 1.25);
+        float trebleHit = pow(u_treble, 1.1);
+        float levelHit = pow(u_level, 1.2);
+
+        float speed = 0.17 + levelHit * 1.05;
+        float zoomPhase = time * speed;
+        float zf = fract(zoomPhase);
+        float z0 = exp2(zf * (7.2 + bassHit * 1.8));
+        float z1 = z0 * 2.0;
+        float blend = smoothstep(0.0, 1.0, zf);
+
+        vec2 uv = (gl_FragCoord.xy / resolution.xy) * 2.0 - 1.0;
+        uv.x *= resolution.x / resolution.y;
+        uv *= surfacePosition * (1.18 + bassHit * 0.14);
+
+        float t = atan(fract(time * 0.22 * (0.55 + levelHit * 2.3)) * 2.0 - 1.0);
+        float seedScale = (0.8 + asin(sin(t)) * 7.0) * (1.0 + midHit * 1.8);
+
+        float c0 = rand(uv * z0 * seedScale);
+        float c1 = rand(uv * z1 * seedScale);
+        float color = mix(c0, c1, blend);
+
+        // Smooth tonal shaping (no quantized/pixelated bands).
+        color = smoothstep(0.02, 0.98, color);
+        color = clamp(color * (0.92 + midHit * 0.22), 0.0, 1.0);
+
+        float pulse = sin((uv.x * uv.y) * z0 * (0.7 + bassHit * 3.4) + t * (2.4 + bassHit * 4.0));
+        float shimmer = cos(color + t * (3.8 + trebleHit * 8.0) + zf * 6.28318);
+        float strobe = smoothstep(0.58, 0.98, color + bassHit * 0.35);
+        float r = color + bassHit * 0.55 + strobe * 0.25;
+        float g = pulse * (0.6 + midHit * 1.2);
+        float b = cos(color + t * (3.8 + trebleHit * 8.0) + zf * 6.28318) + trebleHit * 0.45 + strobe * 0.18;
+
+        vec2 imgUv = coverUv(gl_FragCoord.xy / resolution.xy, resolution, u_imageSize);
+        vec2 imgWarp = vec2(
+          sin(time * 0.8 + uv.y * (3.0 + midHit * 7.0)),
+          cos(time * 1.0 + uv.x * (2.0 + bassHit * 8.0))
+        ) * (0.004 + u_level * 0.025);
+        vec3 imgCol = texture2D(u_image, imgUv + imgWarp).rgb;
+        float imgMono = dot(imgCol, vec3(0.299, 0.587, 0.114));
+    `;
+
+    const FRAGMENT_LIBRARY = [
+      {
+        name: "Classic Sandbox",
+        src: `
+          precision highp float;
+          uniform float time;
+          uniform vec2 mouse;
+          uniform vec2 resolution;
+          uniform float u_bass;
+          uniform float u_mid;
+          uniform float u_treble;
+          uniform float u_level;
+          varying vec2 surfacePosition;
+
+          float rand(vec2 co){
+              return fract(sin(dot(floor(co.xy), vec2(0.0, 1.0) + tan(time * 0.0001 * (1.0 + u_treble * 3.0)))) * 500.0);
+          }
+
+          void main(void) {
+            float bassHit = pow(u_bass, 1.15);
+            float midHit = pow(u_mid, 1.1);
+            float trebleHit = pow(u_treble, 1.08);
+            float levelHit = pow(u_level, 1.05);
+
+            float t = atan(fract(time * 2e-1 * (0.75 + levelHit * 1.8)) * 2.0 - 1.0);
+            vec2 sp = surfacePosition;
+            vec2 position = gl_FragCoord.xy - (mouse * resolution);
+            position += vec2(
+              sin(time * (1.2 + bassHit * 3.0) + sp.y * 7.0),
+              cos(time * (1.0 + midHit * 2.8) + sp.x * 8.0)
+            ) * (5.0 + levelHit * 18.0);
+            position *= sp;
+
+            // Infinite zoom by blending two neighboring exponential scales.
+            float zoomPhase = time * (0.10 + levelHit * 0.28);
+            float zf = fract(zoomPhase);
+            float z0 = exp2(zf * (6.0 + bassHit * 1.2));
+            float z1 = z0 * 2.0;
+            float zoomBlend = smoothstep(0.0, 1.0, zf);
+
+            float seed = (0.25 + asin(sin(t)) * (11.1 + midHit * 10.0));
+            float c0 = rand(position.xy * seed * z0);
+            float c1 = rand(position.xy * seed * z1);
+            float color = mix(c0, c1, zoomBlend);
+            // Smooth tonal shaping (no quantized/pixelated bands).
+            color = smoothstep(0.02, 0.98, color);
+            color = clamp(color * (0.9 + midHit * 0.2), 0.0, 1.0);
+
+            float r = color + bassHit * 0.45;
+            float g = sin(position.x * position.y * t * (2.0 + bassHit * 2.2)) * (0.75 + midHit * 0.55);
+            float b = cos(color + t * (3.0 + trebleHit * 6.5)) + trebleHit * 0.38;
+            gl_FragColor = vec4(r, g, b, 1.0);
+          }
+        `,
+      },
+      {
+        name: "Zoom RGB",
+        src: `${zoomBase}
+        vec3 proc = vec3(r, g, b);
+        float fill = clamp((proc.r + proc.g + proc.b) * 0.22, 0.0, 1.0);
+        vec3 outCol = mix(proc, imgCol * (0.3 + fill * 1.45), u_hasImage);
+        gl_FragColor = vec4(outCol, 1.0);
+      }`,
+      },
+      {
+        name: "Image Distortion (Flow)",
+        src: `
+          precision highp float;
+          uniform vec2 resolution;
+          uniform float time;
+          uniform vec2 mouse;
+          uniform sampler2D u_image;
+          uniform float u_hasImage;
+          uniform vec2 u_imageSize;
+          uniform float u_distortionStrength;
+          uniform float u_distortionSpeed;
+
+          #define u_resolution resolution
+          #define u_time time
+          #define u_mouse mouse
+
+          vec2 coverUv(vec2 uv, vec2 screen, vec2 image) {
+            float rs = screen.x / screen.y;
+            float ri = max(image.x / max(image.y, 1.0), 0.0001);
+            if (rs > ri) {
+              float scale = ri / rs;
+              return vec2(uv.x, (uv.y - 0.5) * scale + 0.5);
+            }
+            float scale = rs / ri;
+            return vec2((uv.x - 0.5) * scale + 0.5, uv.y);
+          }
+
+          float hash21(vec2 p) {
+            p = fract(p * vec2(123.34, 456.21));
+            p += dot(p, p + 78.233);
+            return fract(p.x * p.y);
+          }
+
+          float noise2(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            float a = hash21(i);
+            float b = hash21(i + vec2(1.0, 0.0));
+            float c = hash21(i + vec2(0.0, 1.0));
+            float d = hash21(i + vec2(1.0, 1.0));
+            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+          }
+
+          float fbm(vec2 p) {
+            float v = 0.0;
+            float a = 0.5;
+            mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+            for (int i = 0; i < 5; i++) {
+              v += a * noise2(p);
+              p = m * p;
+              a *= 0.5;
+            }
+            return v;
+          }
+
+          void main(void) {
+            vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+            vec2 imgUv = coverUv(uv, u_resolution, u_imageSize);
+
+            if (u_hasImage < 0.5) {
+              gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+              return;
+            }
+
+            float strength = clamp(u_distortionStrength, 0.0, 1.0);
+            float speed = max(0.0, u_distortionSpeed);
+            float t = u_time * (0.2 + speed * 1.8);
+
+            vec2 ap = vec2(u_resolution.x / max(u_resolution.y, 1.0), 1.0);
+            vec2 p = (imgUv - 0.5) * ap;
+            vec2 m = (u_mouse - 0.5) * ap;
+
+            vec2 flowA = vec2(
+              fbm(p * 3.2 + m * 0.8 + vec2(t, -t * 0.7)),
+              fbm(p * 3.2 - m * 0.6 + vec2(-t * 0.45, t))
+            ) - 0.5;
+
+            vec2 flowB = vec2(
+              sin(t * 0.9 + p.y * 11.0),
+              cos(t * 1.1 + p.x * 9.0)
+            ) * 0.5;
+
+            float radial = length(p);
+            float falloff = smoothstep(1.2, 0.0, radial);
+            vec2 warp = (flowA * 0.7 + flowB * 0.3) * (0.004 + strength * 0.06) * (0.45 + falloff * 0.55);
+
+            vec3 col = texture2D(u_image, clamp(imgUv + warp, 0.0, 1.0)).rgb;
+            gl_FragColor = vec4(col, 1.0);
+          }
+        `,
+      },
+      {
+        name: "Infinite Fractal Zoom",
+        src: `
+          precision highp float;
+          uniform float time;
+          uniform vec2 resolution;
+          uniform float u_bass;
+          uniform float u_mid;
+          uniform float u_treble;
+          uniform float u_level;
+
+          #define PI 3.1415926
+
+          vec2 vpow2(vec2 v){
+            return vec2(v.x * v.x - v.y * v.y, 2.0 * v.x * v.y);
+          }
+
+          vec2 rv(vec2 v, float r){
+            float a = atan(v.y, v.x) + r;
+            return vec2(cos(a), sin(a)) * length(v);
+          }
+
+          float itr(vec2 c){
+            vec2 z = vec2(0.0);
+            float it = 0.0;
+            for(int i = 0; i < 256; i++){
+              if(dot(z, z) > 8192.0) break;
+              z = vpow2(z) + c;
+              it += 1.0;
+            }
+            float lz = max(length(z), 1.000001);
+            return it + 1.0 - log(log(lz)) / log(2.0);
+          }
+
+          vec3 fcol(float it){
+            if(it < 256.0){
+              return vec3(
+                0.5 + 0.5 * sin(it / 22.0),
+                0.5 + 0.5 * sin(it / 34.0),
+                0.5 + 0.5 * sin(it / 46.0)
+              );
+            }
+            return vec3(0.0);
+          }
+
+          void main(void) {
+            vec2 q = (2.0 * gl_FragCoord.xy - resolution.xy) / resolution.y;
+
+            float bassHit = pow(u_bass, 1.15);
+            float midHit = pow(u_mid, 1.08);
+            float trebleHit = pow(u_treble, 1.05);
+            float levelHit = pow(u_level, 1.08);
+
+            float mzoom = 100000.0;
+            float ztime = log(mzoom) / log(2.0);
+            float speed = 0.55 + levelHit * 1.8 + bassHit * 0.9;
+            float zClock = time * speed;
+            float zoom = pow(2.0, mod(zClock, ztime));
+            float zphase = mod(zClock / ztime, 1.0);
+            float r = (4.0 * PI - 4.04) * zphase + time * (0.05 + midHit * 0.22);
+
+            vec2 fractalCoord = vec2(-0.1379193664, -0.8846056810);
+            fractalCoord += vec2(
+              sin(time * 0.15 + bassHit * 2.0),
+              cos(time * 0.13 + trebleHit * 2.4)
+            ) * (0.002 + levelHit * 0.006);
+
+            vec2 c = rv(q / zoom, r) + fractalCoord;
+            vec2 c2 = rv(q * mzoom / zoom, r + 4.04 + trebleHit * 0.25) + fractalCoord;
+
+            float it = itr(c);
+            float it2 = itr(c2);
+
+            vec3 colA = fcol(it);
+            vec3 colB = fcol(it2);
+            float w = pow(zphase, 0.9);
+            vec3 col = colA * (1.0 - w) * clamp(1.0 - 0.2 * it2, 0.0, 1.0);
+            col += colB * w;
+            col *= (0.9 + levelHit * 0.65 + bassHit * 0.2);
+
+            gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+          }
+        `,
+      },
+      {
+        name: "Spectrum Fall Tunnel",
+        src: `
+          precision highp float;
+          uniform float time;
+          uniform vec2 resolution;
+          uniform float u_bass;
+          uniform float u_mid;
+          uniform float u_treble;
+          uniform float u_level;
+
+          vec3 hash31(float p) {
+            vec3 p3 = fract(p * vec3(0.1031, 0.1030, 0.0973));
+            p3 += dot(p3, p3.yzx + 19.19);
+            return fract((p3.xxy + p3.yzz) * p3.zyx);
+          }
+
+          vec3 spectrum(float d) {
+            return smoothstep(0.25, 0.0, abs(d + vec3(0.125, 0.0, -0.125)));
+          }
+
+          void main(void) {
+            float bandSpacing = mix(0.1, 0.9, u_mid);
+            float frequencyY = mix(0.45, 3.6, 0.25 + u_treble * 0.75);
+            float speedZ = mix(1.0, 13.0, u_level);
+            float randomSpeed = mix(0.8, 6.5, u_bass);
+            float frequencyZ = mix(0.006, 0.09, u_treble);
+
+            vec3 color = vec3(0.0);
+            float z = time * speedZ;
+            float zOffset = z * randomSpeed;
+
+            vec2 uv = gl_FragCoord.xy / resolution.xy - 0.5;
+            uv.x *= resolution.x / resolution.y;
+
+            vec3 ray = normalize(vec3(uv, 1.5));
+            float r = 1.0;
+
+            for (int i = 0; i < 4; i++) {
+              vec3 hit = (ray / max(abs(ray.x), 0.001)) * r++;
+              vec3 p = hit;
+              p.z += z;
+
+              float seed = p.x * 7.0 + p.y + 5.0;
+              p.y += sin(seed * 5.0 + time * 0.2) * bandSpacing;
+              seed = (p.x + p.y) * frequencyY;
+
+              vec3 rnd = hash31(floor(seed));
+              p.z += (rnd.x - 0.5) * -zOffset;
+              p.z *= frequencyZ / (rnd.y + 0.05);
+
+              vec2 cell = fract(vec2(seed, p.z)) - 0.5;
+
+              float b = rnd.y;
+              b *= smoothstep(0.5, 0.0, abs(cell.x));
+              b *= smoothstep(50.0, 10.0, length(hit));
+              b *= smoothstep(5.0, 2.0, abs(hit.y));
+              color += spectrum(cell.y) * b;
+            }
+
+            color = sqrt(max(color, 0.0));
+            color *= 1.3 - dot(uv, uv);
+            color *= 0.9 + u_level * 0.65 + u_bass * 0.22;
+            gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+          }
+        `,
+      },
+      {
+        name: "Mobius Menger Fall",
+        src: `
+          precision highp float;
+          uniform float time;
+          uniform vec2 resolution;
+          uniform float u_bass;
+          uniform float u_mid;
+          uniform float u_treble;
+          uniform float u_level;
+
+          vec2 cMul(vec2 a, vec2 b) {
+            return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+          }
+
+          vec2 cInverse(vec2 a) {
+            return vec2(a.x, -a.y) / max(dot(a, a), 0.00001);
+          }
+
+          vec2 cDiv(vec2 a, vec2 b) {
+            return cMul(a, cInverse(b));
+          }
+
+          float hash(float n) {
+            return fract(sin(n) * 43758.5453123);
+          }
+
+          float hash2(float n) {
+            return fract(sin(n) * 4375345348.5453123);
+          }
+
+          float sdBox(vec3 p, vec3 b) {
+            vec3 q = abs(p) - b;
+            return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+          }
+
+          float opSmoothUnion(float d1, float d2, float k) {
+            float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
+            return mix(d2, d1, h) - k * h * (1.0 - h);
+          }
+
+          mat2 rot2D(float angle) {
+            float s = sin(angle);
+            float c = cos(angle);
+            return mat2(c, -s, s, c);
+          }
+
+          mat3 rot3D(vec3 axis, float angle) {
+            axis = normalize(axis);
+            float s = sin(angle);
+            float c = cos(angle);
+            float oc = 1.0 - c;
+            return mat3(
+              oc * axis.x * axis.x + c,
+              oc * axis.x * axis.y - axis.z * s,
+              oc * axis.z * axis.x + axis.y * s,
+              oc * axis.x * axis.y + axis.z * s,
+              oc * axis.y * axis.y + c,
+              oc * axis.y * axis.z - axis.x * s,
+              oc * axis.z * axis.x - axis.y * s,
+              oc * axis.y * axis.z + axis.x * s,
+              oc * axis.z * axis.z + c
+            );
+          }
+
+          float sdMengerSponge(vec3 p) {
+            float d = sdBox(p, vec3(1.0));
+            float s = 1.0;
+            for (int m = 0; m < 3; m++) {
+              vec3 a = mod(p * s, 2.0) - 1.0;
+              s *= 3.0;
+              vec3 r = abs(1.0 - 3.0 * abs(a));
+              float da = max(r.x, r.y);
+              float db = max(r.y, r.z);
+              float dc = max(r.z, r.x);
+              float c = (min(da, min(db, dc)) - 1.0) / s;
+              d = max(d, c);
+            }
+            return d;
+          }
+
+          float mapScene(vec3 p, float mengerMix) {
+            p = mod(p, 1.0) - 0.5;
+
+            float rightbox = sdBox(p, vec3(0.5, 0.05, 0.05));
+            float topbox = sdBox(p, vec3(0.05, 0.5, 0.05));
+            float backbox = sdBox(p, vec3(0.05, 0.05, 0.5));
+
+            float sec = floor(time + 0.5);
+            float r = step(0.5, hash(sec));
+            float dir = step(0.5, hash2(sec)) * 2.0 - 1.0;
+
+            float x = mix(p.x, mod(p.x + dir * time, 1.0) - 0.5, r);
+            float y = mix(p.y, mod(p.y + dir * time, 1.0) - 0.5, 1.0 - r);
+
+            float mainbox = sdBox(vec3(x, y, p.z), vec3(0.15));
+            float mengerbox = sdMengerSponge(vec3(x, y, p.z) / 0.15) * 0.15;
+            mainbox = mix(mainbox, mengerbox, mengerMix);
+
+            return opSmoothUnion(min(min(rightbox, topbox), backbox), mainbox, 0.05);
+          }
+
+          vec3 palette(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
+            return a + b * cos(6.28318 * (c * t + time * 0.1 + d));
+          }
+
+          void main(void) {
+            vec2 uv = (2.0 * gl_FragCoord.xy - resolution.xy) / resolution.y;
+
+            float bassHit = pow(u_bass, 1.15);
+            float midHit = pow(u_mid, 1.1);
+            float trebleHit = pow(u_treble, 1.07);
+            float levelHit = pow(u_level, 1.08);
+
+            vec2 a = vec2(-0.14 + bassHit * 0.05, 0.0);
+            vec2 b = vec2(0.02 + midHit * 0.04, 0.0);
+            vec2 c = vec2(-0.02 + trebleHit * 0.03, 0.0);
+            vec2 d = vec2(-0.08 + levelHit * 0.05, 0.0);
+            float mobius = 0.75 + 0.25 * levelHit;
+            float menger = clamp(0.18 + midHit * 0.65, 0.0, 1.0);
+
+            vec2 numerator = cMul(a, uv) + b;
+            vec2 denominator = cMul(c, uv) + d;
+            vec2 transformed = cDiv(numerator, denominator);
+            uv = mix(uv, transformed, mobius);
+
+            float fov = 1.1 + levelHit * 0.2;
+            vec3 ro = vec3(0.0, 0.0, mod(time * (1.1 + levelHit * 2.2), 1.0));
+            vec3 rd = normalize(vec3(uv * fov, 1.0));
+            rd.xyz *= rot3D(vec3(10.0 * cos(time * 0.13), 10.0 * cos(time * 0.12), 10.0 * cos(time * 0.11)), time * (0.5 + bassHit * 0.45));
+            rd.xz *= rot2D(time * (0.08 + trebleHit * 0.22));
+
+            float t = 0.05;
+            int steps = 0;
+
+            for (int i = 0; i < 150; i++) {
+              vec3 p = ro + rd * t;
+              p.y += (cos(t + time * 0.7) * 0.2) * (0.5 + 0.5 * cos(time * 0.13));
+              p.x += (sin(t + time * 0.6) * 0.2) * (0.5 + 0.5 * cos(time * 0.11));
+
+              float dist = mapScene(p, menger);
+              t += dist;
+              steps = i;
+              if (dist < 0.0001 || t > 100.0) break;
+            }
+
+            vec3 col = palette(
+              (t * 0.2 + float(steps) * 0.005) * (0.7 + 0.4 * cos(time)),
+              vec3(0.8, 0.5, 0.4),
+              vec3(0.2, 0.4, 0.2),
+              vec3(2.0, 1.0, 1.0),
+              vec3(0.0, 0.25, 0.25)
+            );
+            col *= 0.85 + levelHit * 0.6 + bassHit * 0.18;
+
+            gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+          }
+        `,
+      },
+      {
+        name: "Bermarte Fractal",
+        src: `
+          precision highp float;
+          uniform vec2 mouse;
+          uniform float time;
+          uniform vec2 resolution;
+          uniform float u_bass;
+          uniform float u_mid;
+          uniform float u_treble;
+          uniform float u_level;
+
+          vec2 zkal(vec2 a) {
+            a = abs(a);
+            float m = max(dot(a, a), 0.0004);
+            a /= m;
+            return a;
+          }
+
+          void main(void) {
+            float bassHit = pow(u_bass, 1.1);
+            float midHit = pow(u_mid, 1.08);
+            float trebleHit = pow(u_treble, 1.06);
+            float levelHit = pow(u_level, 1.05);
+
+            float R = 0.6 + bassHit * 1.15;
+            float G = 1.08 + midHit * 1.25;
+            float B = 1.35 + trebleHit * 1.45;
+            float JuliaX = -0.5 * mouse.x;
+            float JuliaY = -0.5 * mouse.y;
+            float C = max(abs(sin(time * (1.0 + levelHit * 0.8))), 0.05);
+            vec2 c2 = vec2(JuliaX, JuliaY);
+
+            vec2 p = -1.0 + 2.0 * gl_FragCoord.xy / resolution.xy;
+            p.x *= resolution.x / resolution.y;
+
+            // Looping infinite zoom, with subtle audio breathing.
+            float zoomPhase = fract(time * (0.12 + levelHit * 0.22));
+            float zoomScale = exp2(zoomPhase * (3.4 + bassHit * 1.1));
+            float breath = 1.0 + sin(time * (0.7 + midHit * 1.3)) * (0.06 + bassHit * 0.1);
+            p *= (1.55 / zoomScale) * breath;
+
+            // Music-synced spin.
+            float th = time * (0.22 + midHit * 1.2) + bassHit * 2.0;
+            mat2 rot = mat2(cos(th), -sin(th), sin(th), cos(th));
+            p *= rot;
+
+            float denom = sin(time / 100.0 - mouse.y);
+            denom = sign(denom) * max(abs(denom), 0.08);
+            p /= denom;
+
+            bool Julia = true;
+            vec2 z = Julia ? p : vec2(0.0, 0.0);
+            float mean = 0.0;
+            float PrItrs = 4.0;
+            const int iters = 44;
+            for (int i = 0; i < iters; i++) {
+              z = zkal(z) + (Julia ? c2 : p);
+              if (float(i) > PrItrs) mean -= length(z);
+            }
+            mean /= float(iters) - PrItrs;
+            float co = 1.0 - log2(0.5 * log2(max(abs(mean / C), 0.0001)));
+            vec3 proc = vec3(R * co, G * co, B * co);
+            // Remove dimming: stronger contrast/brightness on the fractal itself.
+            proc = pow(abs(proc), vec3(0.78));
+            proc *= (1.1 + levelHit * 0.55 + bassHit * 0.25);
+            gl_FragColor = vec4(proc, 1.0);
+          }
+        `,
+      },
+      {
+        name: "ISF Block Feedback",
+        src: `
+          precision highp float;
+          uniform float time;
+          uniform vec2 resolution;
+          uniform float u_bass;
+          uniform float u_mid;
+          uniform float u_treble;
+          uniform float u_level;
+          uniform sampler2D u_image;
+          uniform sampler2D u_prevFrame;
+          uniform float u_hasImage;
+          uniform vec2 u_imageSize;
+
+          float random(vec2 p) {
+            return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453123);
+          }
+
+          vec2 rand2(float x) {
+            return vec2(random(vec2(x, 2.123 * x)), random(vec2(1.17856 * x, 4.312 * x)));
+          }
+
+          vec2 coverUv(vec2 uv, vec2 screen, vec2 image) {
+            float rs = screen.x / screen.y;
+            float ri = max(image.x / max(image.y, 1.0), 0.0001);
+            if (rs > ri) {
+              float scale = ri / rs;
+              return vec2(uv.x, (uv.y - 0.5) * scale + 0.5);
+            }
+            float scale = rs / ri;
+            return vec2((uv.x - 0.5) * scale + 0.5, uv.y);
+          }
+
+          vec3 inputAt(vec2 uv) {
+            vec2 iuv = coverUv(uv, resolution, u_imageSize);
+            vec3 img = texture2D(u_image, clamp(iuv, 0.0, 1.0)).rgb;
+            if (u_hasImage < 0.5) {
+              float n = random(uv * 311.0 + vec2(time * 0.3, time * 0.17));
+              return vec3(0.1 + 0.9 * n);
+            }
+            return img;
+          }
+
+          void main(void) {
+            vec2 pos = gl_FragCoord.xy / resolution.xy;
+            vec2 center = vec2(0.5);
+
+            float bassHit = pow(u_bass, 1.15);
+            float midHit = pow(u_mid, 1.08);
+            float trebleHit = pow(u_treble, 1.05);
+            float levelHit = pow(u_level, 1.08);
+
+            float zoom = mix(1.018, 0.972, 0.5 + 0.5 * sin(time * (0.45 + levelHit * 0.7) + bassHit * 3.2));
+            vec2 oldpos = zoom * (pos - center) + center;
+
+            float sampleSpeed = 2.0 + midHit * 8.0 + trebleHit * 3.0;
+            float tick = floor(sampleSpeed * time);
+            vec2 A = rand2(tick + 11.0);
+            vec2 B = rand2(tick + 43.562 + bassHit * 9.0);
+
+            float xmin = min(A.x, B.x);
+            float xmax = max(A.x, B.x);
+            float ymin = min(A.y, B.y);
+            float ymax = max(A.y, B.y);
+
+            float alpha = 0.72;
+            alpha *= step(xmin, pos.x) * (1.0 - step(xmax, pos.x));
+            alpha *= step(ymin, pos.y) * (1.0 - step(ymax, pos.y));
+
+            float blockSize = 0.01 + bassHit * 0.1 + levelHit * 0.04;
+            vec2 offset = blockSize * (rand2(tick + pos.x * 37.0 + pos.y * 91.0) - 0.5);
+
+            vec3 color = alpha * inputAt(pos + offset);
+            vec3 oldPixel = texture2D(u_prevFrame, clamp(oldpos, 0.0, 1.0)).rgb;
+
+            float feedbackFade = clamp(0.86 + levelHit * 0.1 + midHit * 0.03, 0.82, 0.98);
+            vec3 feedbackCol = max(color, feedbackFade * (color * 0.01 + oldPixel));
+
+            vec3 base = inputAt(pos);
+            float mixAmt = clamp(0.58 + bassHit * 0.25 + levelHit * 0.2, 0.0, 1.0);
+            vec3 outCol = mix(base, feedbackCol, mixAmt);
+            gl_FragColor = vec4(clamp(outCol, 0.0, 1.0), 1.0);
+          }
+        `,
+      },
+      {
+        name: "Broken LCD Image",
+        src: `
+          precision highp float;
+          uniform float time;
+          uniform vec2 resolution;
+          uniform float u_bass;
+          uniform float u_mid;
+          uniform float u_treble;
+          uniform float u_level;
+          uniform sampler2D u_image;
+          uniform float u_hasImage;
+          uniform vec2 u_imageSize;
+
+          float hash21(vec2 p) {
+            p = fract(p * vec2(123.34, 345.45));
+            p += dot(p, p + 34.345);
+            return fract(p.x * p.y);
+          }
+
+          float noise2(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            float a = hash21(i);
+            float b = hash21(i + vec2(1.0, 0.0));
+            float c = hash21(i + vec2(0.0, 1.0));
+            float d = hash21(i + vec2(1.0, 1.0));
+            return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+          }
+
+          float fbm(vec2 p) {
+            float f = 0.0;
+            float a = 0.5;
+            mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+            for (int i = 0; i < 5; i++) {
+              f += a * noise2(p);
+              p = m * p;
+              a *= 0.5;
+            }
+            return f;
+          }
+
+          vec2 coverUv(vec2 uv, vec2 screen, vec2 image) {
+            float rs = screen.x / screen.y;
+            float ri = max(image.x / max(image.y, 1.0), 0.0001);
+            if (rs > ri) {
+              float scale = ri / rs;
+              return vec2(uv.x, (uv.y - 0.5) * scale + 0.5);
+            }
+            float scale = rs / ri;
+            return vec2((uv.x - 0.5) * scale + 0.5, uv.y);
+          }
+
+          vec3 inputAt(vec2 uv) {
+            vec2 iuv = coverUv(uv, resolution, u_imageSize);
+            vec3 img = texture2D(u_image, clamp(iuv, 0.0, 1.0)).rgb;
+            if (u_hasImage < 0.5) {
+              float n = fbm(uv * vec2(7.0, 4.0) + time * 0.25);
+              return vec3(0.2 + 0.8 * n);
+            }
+            return img;
+          }
+
+          vec3 patternAt(vec2 uv, float style, float seed) {
+            vec2 g = uv * resolution.xy;
+            if (style < 0.5) {
+              float n = step(0.55, hash21(floor(g * (0.03 + seed * 0.03))));
+              return vec3(n);
+            }
+            if (style < 1.5) {
+              float n = step(0.5, fract(g.y * (0.03 + seed * 0.02)));
+              return vec3(n);
+            }
+            if (style < 2.5) {
+              float n = step(0.5, fract(g.x * (0.03 + seed * 0.02)));
+              return vec3(n);
+            }
+            if (style < 3.5) {
+              vec2 c = floor(g * (0.02 + seed * 0.02));
+              float n = mod(c.x + c.y, 2.0);
+              return vec3(n);
+            }
+            vec2 c = floor(g * (0.04 + seed * 0.03));
+            float n = step(0.62, hash21(c + seed));
+            return vec3(n, n * 0.75 + 0.25, 1.0 - n * 0.45);
+          }
+
+          void main(void) {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec2 puv = uv * vec2(resolution.x / resolution.y, 1.0);
+
+            float bassHit = pow(u_bass, 1.12);
+            float midHit = pow(u_mid, 1.08);
+            float trebleHit = pow(u_treble, 1.06);
+            float levelHit = pow(u_level, 1.08);
+
+            float rowGate = step(1.0 - (0.03 + bassHit * 0.2), hash21(vec2(floor(uv.y * 220.0), floor(time * 19.0))));
+            float rowShift = (hash21(vec2(floor(uv.y * 130.0), floor(time * 7.0))) - 0.5) * (0.02 + bassHit * 0.12) * rowGate;
+            vec2 rowUv = vec2(fract(uv.x + rowShift), uv.y);
+            vec3 base = inputAt(rowUv);
+
+            float glitchScale = 2.5 + midHit * 24.0;
+            float n = fbm(puv * glitchScale + vec2(time * (0.45 + trebleHit * 1.3), -time * (0.25 + bassHit * 0.9)));
+            float glitchBrightness = 0.85 + bassHit * 1.55 + levelHit * 0.95;
+            float glitchCurve = 1.1 + (1.0 - midHit) * 2.8;
+            float mask = 1.0 - pow(clamp(n, 0.0, 1.0), glitchCurve) * glitchBrightness;
+            mask = clamp(mask, 0.0, 1.0);
+
+            float radius = 0.16 + 0.78 * (0.22 + levelHit * 0.78);
+            float d = distance(uv, vec2(0.5));
+            if (d > radius) mask = clamp(mask + (d - radius) * (1.1 + bassHit * 1.35), 0.0, 1.0);
+            if (trebleHit > 0.62) mask = step(0.86 - trebleHit * 0.22, mask);
+
+            float style = floor(mod(time * (0.25 + levelHit * 1.4) + midHit * 13.0, 5.0));
+            vec3 patt = patternAt(uv, style, 1.0 + trebleHit * 7.0 + levelHit * 3.0);
+            vec3 col = mix(base, patt, 1.0 - mask);
+
+            vec3 tintA = inputAt(vec2(0.23 + 0.08 * sin(time * 0.22), 0.35));
+            vec3 tintB = inputAt(vec2(0.77 + 0.08 * cos(time * 0.17), 0.68));
+            float tintN = fbm(puv * (2.0 + midHit * 8.0) + vec2(0.0, time * 0.12));
+            vec3 tint = mix(tintA, tintB, clamp(tintN, 0.0, 1.0));
+            float tintMask = clamp((1.0 - mask) * (0.2 + levelHit * 0.6), 0.0, 1.0);
+            col = mix(col, col * tint * (1.0 + bassHit * 0.5), tintMask);
+
+            float flicker = 1.0 - (0.04 + trebleHit * 0.16) * step(hash21(vec2(time * 41.0, uv.y * 101.0)), 0.3 + trebleHit * 0.5);
+            col *= flicker;
+            gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+          }
+        `,
+      },
+      {
+        name: "Magnifying Marble Image",
+        src: `
+          precision highp float;
+          uniform float time;
+          uniform vec2 resolution;
+          uniform float u_bass;
+          uniform float u_mid;
+          uniform float u_treble;
+          uniform float u_level;
+          uniform sampler2D u_image;
+          uniform float u_hasImage;
+          uniform vec2 u_imageSize;
+
+          vec2 iSphere(vec3 ro, vec3 rd, vec4 sph) {
+            vec3 oc = ro - sph.xyz;
+            float b = dot(oc, rd);
+            float c = dot(oc, oc) - sph.w * sph.w;
+            float h = b * b - c;
+            if (h < 0.0) return vec2(-1.0);
+            float s = sqrt(h);
+            return vec2(-b - s, -b + s);
+          }
+
+          float hash21(vec2 p) {
+            p = fract(p * vec2(123.34, 345.45));
+            p += dot(p, p + 34.345);
+            return fract(p.x * p.y);
+          }
+
+          float noise2(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            vec2 u = f * f * (3.0 - 2.0 * f);
+            float a = hash21(i);
+            float b = hash21(i + vec2(1.0, 0.0));
+            float c = hash21(i + vec2(0.0, 1.0));
+            float d = hash21(i + vec2(1.0, 1.0));
+            return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+          }
+
+          vec2 coverUv(vec2 uv, vec2 screen, vec2 image) {
+            float rs = screen.x / screen.y;
+            float ri = max(image.x / max(image.y, 1.0), 0.0001);
+            if (rs > ri) {
+              float scale = ri / rs;
+              return vec2(uv.x, (uv.y - 0.5) * scale + 0.5);
+            }
+            float scale = rs / ri;
+            return vec2((uv.x - 0.5) * scale + 0.5, uv.y);
+          }
+
+          vec3 inputAt(vec2 uv) {
+            vec2 iuv = coverUv(uv, resolution, u_imageSize);
+            vec3 img = texture2D(u_image, clamp(iuv, 0.0, 1.0)).rgb;
+            if (u_hasImage < 0.5) {
+              float n = noise2(uv * vec2(13.0, 8.0) + vec2(time * 0.18, -time * 0.14));
+              return vec3(0.2 + 0.8 * n, 0.3 + 0.7 * n, 0.4 + 0.6 * n);
+            }
+            return img;
+          }
+
+          void main(void) {
+            float aspect = resolution.x / resolution.y;
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+
+            float bassHit = pow(u_bass, 1.12);
+            float midHit = pow(u_mid, 1.08);
+            float trebleHit = pow(u_treble, 1.07);
+            float levelHit = pow(u_level, 1.08);
+
+            vec3 ro = vec3(0.0, 0.0, 1.6);
+            vec3 rd = normalize(vec3((-1.0 + 2.0 * uv) * vec2(aspect, 1.0), -1.0));
+            vec4 sph = vec4(0.0, 0.0, 0.0, 0.78 + levelHit * 0.18);
+            vec2 tHit = iSphere(ro, rd, sph);
+
+            vec3 col;
+            if (tHit.x > 0.0) {
+              vec3 hit = ro + rd * tHit.x;
+              vec3 N = normalize(hit - sph.xyz);
+              vec3 L = normalize(vec3(0.7, 0.8, 2.8));
+
+              float refractionIn = 0.82 - bassHit * 0.2;
+              vec3 refrVec = refract(rd, N, refractionIn);
+              vec2 refrUv = uv + refrVec.xy * (0.25 + levelHit * 0.35);
+
+              float tt = time * (0.2 + levelHit * 0.7);
+              float g1 = noise2(refrUv * vec2(11.0, 9.0) + vec2(tt, -tt * 0.7));
+              float g2 = noise2(refrUv * vec2(7.0, 13.0) + vec2(-tt * 0.4, tt));
+              refrUv += vec2(g1, g2) * (0.01 + trebleHit * 0.02);
+
+              vec3 refrCol = inputAt(refrUv);
+              vec3 reflCol = inputAt(uv + reflect(rd, N).xy * (0.08 + midHit * 0.14));
+
+              float ambient = 0.1 + levelHit * 0.25;
+              float specAmt = 0.06 + trebleHit * 0.4;
+              float shininess = 90.0 + trebleHit * 700.0;
+              float spec = pow(max(dot(reflect(-L, N), -rd), 0.0), shininess) * specAmt;
+              float fresnel = pow(1.0 - max(dot(-rd, N), 0.0), 5.0);
+
+              col = refrCol * (0.7 + ambient) + reflCol * (0.2 + fresnel * 0.5) + vec3(spec);
+            } else {
+              vec2 drift = uv + vec2(time * (0.01 + midHit * 0.07), sin(time * 0.35) * (0.01 + bassHit * 0.03));
+              vec3 bg = inputAt(drift);
+              float n = noise2(drift * vec2(18.0, 12.0) + vec2(time * 0.15, -time * 0.1));
+              col = bg * (0.72 + 0.28 * n) + vec3(0.08 * n);
+            }
+
+            gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+          }
+        `,
+      },
+      {
+        name: "Halftone CMYK",
+        src: `
+          precision highp float;
+          uniform float time;
+          uniform vec2 resolution;
+          uniform float u_bass;
+          uniform float u_mid;
+          uniform float u_treble;
+          uniform float u_level;
+          uniform sampler2D u_image;
+          uniform float u_hasImage;
+          uniform vec2 u_imageSize;
+
+          vec2 coverUv(vec2 uv, vec2 screen, vec2 image) {
+            float rs = screen.x / screen.y;
+            float ri = max(image.x / max(image.y, 1.0), 0.0001);
+            if (rs > ri) {
+              float scale = ri / rs;
+              return vec2(uv.x, (uv.y - 0.5) * scale + 0.5);
+            }
+            float scale = rs / ri;
+            return vec2((uv.x - 0.5) * scale + 0.5, uv.y);
+          }
+
+          vec3 baseColor(vec2 uv) {
+            if (u_hasImage > 0.5) {
+              vec2 iuv = coverUv(uv, resolution, u_imageSize);
+              return texture2D(u_image, clamp(iuv, 0.0, 1.0)).rgb;
+            }
+            float g = 0.5 + 0.5 * sin((uv.x + time * 0.04) * 14.0) * cos((uv.y - time * 0.03) * 11.0);
+            return vec3(0.3 + 0.7 * g, 0.35 + 0.65 * g * g, 0.4 + 0.6 * sqrt(max(g, 0.0)));
+          }
+
+          float dotMask(vec2 uv, float angle, float scale, float tone) {
+            float c = cos(angle);
+            float s = sin(angle);
+            mat2 r = mat2(c, -s, s, c);
+            vec2 p = uv - 0.5;
+            p.x *= resolution.x / resolution.y;
+            p = r * p * max(scale, 1.0);
+            vec2 cell = fract(p) - 0.5;
+            float d = length(cell);
+            float radius = mix(0.46, 0.06, clamp(tone, 0.0, 1.0));
+            float aa = 0.045;
+            return 1.0 - smoothstep(radius - aa, radius + aa, d);
+          }
+
+          void main(void) {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            float bassHit = pow(u_bass, 1.08);
+            float midHit = pow(u_mid, 1.06);
+            float trebleHit = pow(u_treble, 1.06);
+            float levelHit = pow(u_level, 1.08);
+
+            vec3 src = clamp(baseColor(uv), 0.0, 1.0);
+            float scale = mix(40.0, 92.0, 0.34 + levelHit * 0.58 + trebleHit * 0.12);
+            float spin = time * (0.02 + midHit * 0.05);
+
+            float dR = dotMask(uv, radians(15.0) + spin, scale, src.r);
+            float dG = dotMask(uv, radians(75.0) - spin * 0.8, scale, src.g);
+            float dB = dotMask(uv, radians(0.0) + spin * 0.4, scale, src.b);
+
+            vec3 paper = vec3(
+              1.0 - dR * (1.0 - src.r),
+              1.0 - dG * (1.0 - src.g),
+              1.0 - dB * (1.0 - src.b)
+            );
+
+            float inkMix = 0.14 + bassHit * 0.2;
+            vec3 col = mix(paper, src, inkMix);
+            col = clamp(col * (0.95 + levelHit * 0.25), 0.0, 1.0);
+            gl_FragColor = vec4(col, 1.0);
+          }
+        `,
+      },
+      {
+        name: "Reveal Dispersion Fill",
+        src: `
+          precision highp float;
+          uniform float time;
+          uniform vec2 resolution;
+          uniform float u_bass;
+          uniform float u_mid;
+          uniform float u_treble;
+          uniform float u_level;
+          uniform sampler2D u_image;
+          uniform float u_hasImage;
+          uniform vec2 u_imageSize;
+
+          vec2 coverUv(vec2 uv, vec2 screen, vec2 image) {
+            float rs = screen.x / screen.y;
+            float ri = max(image.x / max(image.y, 1.0), 0.0001);
+            if (rs > ri) {
+              float scale = ri / rs;
+              return vec2(uv.x, (uv.y - 0.5) * scale + 0.5);
+            }
+            float scale = rs / ri;
+            return vec2((uv.x - 0.5) * scale + 0.5, uv.y);
+          }
+
+          float hash21(vec2 p) {
+            p = fract(p * vec2(123.34, 456.21));
+            p += dot(p, p + 45.32);
+            return fract(p.x * p.y);
+          }
+
+          float noise2(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            float a = hash21(i + vec2(0.0, 0.0));
+            float b = hash21(i + vec2(1.0, 0.0));
+            float c = hash21(i + vec2(0.0, 1.0));
+            float d = hash21(i + vec2(1.0, 1.0));
+            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+          }
+
+          float fbm(vec2 p) {
+            float v = 0.0;
+            float a = 0.5;
+            mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+            for (int i = 0; i < 5; i++) {
+              v += a * noise2(p);
+              p = m * p;
+              a *= 0.5;
+            }
+            return v;
+          }
+
+          vec3 sourceColor(vec2 uv) {
+            if (u_hasImage > 0.5) {
+              vec2 iuv = coverUv(uv, resolution, u_imageSize);
+              return texture2D(u_image, clamp(iuv, 0.0, 1.0)).rgb;
+            }
+            float g = 0.5 + 0.5 * sin((uv.x + time * 0.03) * 9.0) * cos((uv.y - time * 0.02) * 7.0);
+            return vec3(0.2 + 0.8 * g, 0.35 + 0.65 * g * g, 0.55 + 0.45 * sqrt(max(g, 0.0)));
+          }
+
+          void main(void) {
+            vec2 uv = gl_FragCoord.xy / resolution.xy;
+            vec2 p = uv - 0.5;
+            p.x *= resolution.x / resolution.y;
+
+            float bassHit = pow(u_bass, 1.08);
+            float midHit = pow(u_mid, 1.08);
+            float trebleHit = pow(u_treble, 1.08);
+            float levelHit = pow(u_level, 1.08);
+
+            float phase = fract(time * (0.03 + levelHit * 0.07) + bassHit * 0.2);
+            float radial = length(p);
+            float n = fbm(p * (3.0 + midHit * 1.4) + vec2(time * 0.12, -time * 0.09));
+            float revealField = n * 0.72 + (1.0 - radial) * 0.42 + bassHit * 0.18;
+            float reveal = smoothstep(phase - 0.22, phase + 0.12, revealField);
+
+            vec2 np = vec2(
+              fbm(p * 4.0 + vec2(time * 0.2, 0.0)) - 0.5,
+              fbm(p * 4.0 + vec2(0.0, -time * 0.2)) - 0.5
+            );
+            float disp = 0.002 + midHit * 0.012 + trebleHit * 0.006;
+            vec2 refr = np * disp * (0.8 + reveal * 1.25);
+            vec2 dir = normalize(p + vec2(1e-5));
+            vec2 chr = dir * (0.0015 + trebleHit * 0.006 + reveal * 0.002);
+
+            vec3 col;
+            col.r = sourceColor(uv + refr + chr).r;
+            col.g = sourceColor(uv + refr * 0.75).g;
+            col.b = sourceColor(uv + refr - chr).b;
+
+            float fresnel = pow(1.0 - clamp(dot(normalize(vec3(np * 2.0, 1.0)), vec3(0.0, 0.0, 1.0)), 0.0, 1.0), 3.0);
+            vec3 sheen = vec3(0.08, 0.11, 0.14) * (0.3 + trebleHit * 1.1) * fresnel;
+            vec3 bg = vec3(0.015, 0.02, 0.028) + 0.025 * vec3(n);
+
+            vec3 outCol = mix(bg, col + sheen, reveal);
+            outCol *= 0.95 + levelHit * 0.3;
+            gl_FragColor = vec4(clamp(outCol, 0.0, 1.0), 1.0);
+          }
+        `,
+      },
+    ];
+
+    const postFragmentSrc = `
+      precision highp float;
+      uniform float time;
+      uniform vec2 resolution;
+      uniform sampler2D u_scene;
+      uniform sampler2D u_prev_scene;
+      uniform sampler2D u_feedback;
+      uniform sampler2D u_image;
+      uniform float u_bass;
+      uniform float u_mid;
+      uniform float u_treble;
+      uniform float u_level;
+      uniform float u_hasImage;
+      uniform vec2 u_imageSize;
+      uniform float u_scene_mix;
+      uniform float u_kaleido;
+      uniform float u_infzoom;
+      uniform float u_edge;
+      uniform float u_bloom;
+      uniform float u_feedback_amt;
+      varying vec2 v_uv;
+
+      vec3 sceneAt(vec2 uv) {
+        return texture2D(u_scene, clamp(uv, 0.0, 1.0)).rgb;
+      }
+
+      vec3 sceneMixedAt(vec2 uv) {
+        vec2 cuv = clamp(uv, 0.0, 1.0);
+        float m = clamp(u_scene_mix, 0.0, 1.0);
+        if (m >= 0.999) return texture2D(u_scene, cuv).rgb;
+        if (m <= 0.001) return texture2D(u_prev_scene, cuv).rgb;
+        vec3 prev = texture2D(u_prev_scene, cuv).rgb;
+        vec3 curr = texture2D(u_scene, cuv).rgb;
+        return mix(prev, curr, m);
+      }
+
+      vec2 coverUv(vec2 uv, vec2 screen, vec2 image) {
+        float rs = screen.x / screen.y;
+        float ri = max(image.x / max(image.y, 1.0), 0.0001);
+        if (rs > ri) {
+          float scale = ri / rs;
+          return vec2(uv.x, (uv.y - 0.5) * scale + 0.5);
+        }
+        float scale = rs / ri;
+        return vec2((uv.x - 0.5) * scale + 0.5, uv.y);
+      }
+
+      float sceneLuma(vec2 uv) {
+        vec3 s = sceneMixedAt(clamp(uv, 0.0, 1.0));
+        return dot(s, vec3(0.299, 0.587, 0.114));
+      }
+
+      float hash21(vec2 p) {
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+
+      float noise2(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float a = hash21(i + vec2(0.0, 0.0));
+        float b = hash21(i + vec2(1.0, 0.0));
+        float c = hash21(i + vec2(0.0, 1.0));
+        float d = hash21(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+      }
+
+      float fbm(vec2 p) {
+        float v = 0.0;
+        float a = 0.5;
+        mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+        for (int i = 0; i < 4; i++) {
+          v += a * noise2(p);
+          p = m * p;
+          a *= 0.5;
+        }
+        return v;
+      }
+
+      vec3 imageAt(vec2 uv) {
+        vec2 iuv = coverUv(clamp(uv, 0.0, 1.0), resolution, u_imageSize);
+        return texture2D(u_image, clamp(iuv, 0.0, 1.0)).rgb;
+      }
+
+      vec3 convolve3x3(
+        vec2 uv, vec2 px,
+        float k00, float k01, float k02,
+        float k10, float k11, float k12,
+        float k20, float k21, float k22
+      ) {
+        vec3 s00 = imageAt(uv + vec2(-px.x,  px.y));
+        vec3 s01 = imageAt(uv + vec2( 0.0,   px.y));
+        vec3 s02 = imageAt(uv + vec2( px.x,  px.y));
+        vec3 s10 = imageAt(uv + vec2(-px.x,  0.0));
+        vec3 s11 = imageAt(uv + vec2( 0.0,   0.0));
+        vec3 s12 = imageAt(uv + vec2( px.x,  0.0));
+        vec3 s20 = imageAt(uv + vec2(-px.x, -px.y));
+        vec3 s21 = imageAt(uv + vec2( 0.0,  -px.y));
+        vec3 s22 = imageAt(uv + vec2( px.x, -px.y));
+
+        return s00 * k00 + s01 * k01 + s02 * k02
+             + s10 * k10 + s11 * k11 + s12 * k12
+             + s20 * k20 + s21 * k21 + s22 * k22;
+      }
+
+      void main(void) {
+        vec2 uv = clamp(v_uv, 0.0, 1.0);
+        vec2 p = uv * 2.0 - 1.0;
+        p.x *= resolution.x / resolution.y;
+
+        if (u_kaleido > 0.001) {
+          float kAmt = clamp(u_kaleido, 0.0, 1.0);
+          // Bass drives kaleido.
+          float kReact = clamp(u_bass * 1.35, 0.0, 1.0);
+          float seg = 4.0 + floor(3.0 + kReact * 9.0);
+          float a = atan(p.y, p.x);
+          float r = length(p);
+          a += time * (0.08 + kReact * 0.6);
+          r *= 1.0 + sin(time * (1.6 + u_bass * 5.2) + r * 10.0) * (0.008 + kReact * 0.024);
+          float stepA = 6.2831853 / seg;
+          a = abs(mod(a, stepA) - stepA * 0.5);
+          vec2 pK = vec2(cos(a), sin(a)) * r;
+          p = mix(p, pK, kAmt);
+        }
+
+        vec2 suv = vec2(p.x * (resolution.y / resolution.x), p.y) * 0.5 + 0.5;
+        if (u_infzoom > 0.001) {
+          float zAmt = clamp(u_infzoom, 0.0, 1.0);
+          // Mid drives zoom.
+          float zReact = clamp(u_mid * 1.35 + u_level * 0.2, 0.0, 1.0);
+          vec2 aspect = vec2(resolution.x / resolution.y, 1.0);
+          vec2 centered = (suv - 0.5) * aspect;
+          float zPulse = 1.0 + sin(time * (1.8 + u_mid * 6.2)) * (0.008 + zReact * 0.03);
+          centered *= zPulse;
+
+          // Continuous forward "falling into frame" motion.
+          float zSpeed = 0.16 + zReact * 0.62;
+          float zPhase = fract(time * zSpeed);
+          float zDepth = 3.8 + zReact * 2.8;
+          float z0 = exp2(zPhase * zDepth);
+          float z1 = z0 * 2.0;
+          float zBlend = smoothstep(0.0, 1.0, zPhase);
+          float zSpin = time * (0.08 + zReact * 0.75);
+          mat2 zr = mat2(cos(zSpin), -sin(zSpin), sin(zSpin), cos(zSpin));
+          vec2 rz = zr * centered;
+
+          float rad2 = dot(centered, centered);
+          float tunnel = 1.0 + rad2 * (0.55 + zReact * 0.9);
+          vec2 uv0 = ((rz / (z0 * tunnel)) / aspect) + 0.5;
+          vec2 uv1 = ((rz / (z1 * tunnel)) / aspect) + 0.5;
+
+          vec2 dir = centered / max(length(centered), 0.0001);
+          float plunge = (0.001 + u_level * 0.009) * (0.6 + u_infzoom * 0.8);
+          float beatPush = 0.5 + 0.5 * sin(time * (2.4 + u_mid * 6.5));
+          vec2 inward = -(dir / aspect) * (plunge * beatPush);
+          uv0 += inward;
+          uv1 += inward * 1.35;
+          vec2 zoomUv = mix(uv0, uv1, zBlend);
+          suv = mix(suv, zoomUv, zAmt);
+        }
+
+        vec3 col = sceneMixedAt(suv);
+
+        if (u_edge > 0.001) {
+          float edgeDrive = clamp(u_edge, 0.0, 1.0);
+          vec2 d = vec2(1.0 / resolution.x, 1.0 / resolution.y);
+          vec3 cx = abs(sceneMixedAt(suv + vec2(d.x, 0.0)) - sceneMixedAt(suv - vec2(d.x, 0.0)));
+          vec3 cy = abs(sceneMixedAt(suv + vec2(0.0, d.y)) - sceneMixedAt(suv - vec2(0.0, d.y)));
+          float beat = 0.65 + 0.35 * sin(time * (3.0 + u_bass * 10.0));
+          float edge = clamp(length(cx + cy) * (0.7 + u_mid * 1.8 + u_treble * 2.4) * beat, 0.0, 1.0);
+          col = mix(col, vec3(edge), edgeDrive * (0.3 + u_level * 0.85));
+        }
+
+        if (u_bloom > 0.5) {
+          vec2 d = vec2(1.2 / resolution.x, 1.2 / resolution.y) * (1.0 + u_mid * 2.0);
+          vec3 blur = sceneMixedAt(suv + vec2(d.x, 0.0)) + sceneMixedAt(suv - vec2(d.x, 0.0))
+                    + sceneMixedAt(suv + vec2(0.0, d.y)) + sceneMixedAt(suv - vec2(0.0, d.y));
+          blur *= 0.25;
+          col = max(col, blur * (0.95 + u_level * 0.7));
+        }
+
+        if (u_feedback_amt > 0.001) {
+          vec2 fbUv = uv + vec2(0.0015 * sin(u_bass * 20.0), 0.0015 * cos(u_mid * 20.0));
+          vec3 fb = texture2D(u_feedback, clamp(fbUv, 0.0, 1.0)).rgb;
+          col = mix(col, max(col, fb * 0.985), u_feedback_amt);
+        }
+
+        if (u_hasImage > 0.5) {
+          // Image-fill mode: image is the content, shader only shapes/distorts it.
+          vec2 d = vec2(1.0 / resolution.x, 1.0 / resolution.y);
+          vec2 suvPx = clamp(suv, 0.0, 1.0);
+
+          // Sobel edges from the shader scene.
+          float tl = sceneLuma(suvPx + vec2(-d.x, d.y));
+          float tc = sceneLuma(suvPx + vec2(0.0, d.y));
+          float tr = sceneLuma(suvPx + vec2(d.x, d.y));
+          float ml = sceneLuma(suvPx + vec2(-d.x, 0.0));
+          float mc = sceneLuma(suvPx);
+          float mr = sceneLuma(suvPx + vec2(d.x, 0.0));
+          float bl = sceneLuma(suvPx + vec2(-d.x, -d.y));
+          float bc = sceneLuma(suvPx + vec2(0.0, -d.y));
+          float br = sceneLuma(suvPx + vec2(d.x, -d.y));
+
+          float gx = (tr + 2.0 * mr + br) - (tl + 2.0 * ml + bl);
+          float gy = (tl + 2.0 * tc + tr) - (bl + 2.0 * bc + br);
+          vec2 grad = vec2(gx, gy);
+
+          float edge = clamp(length(grad) * (1.1 + u_treble * 0.9), 0.0, 1.0);
+          float fill = smoothstep(0.16, 0.9, mc);
+
+          float warpAmt = 0.004 + u_level * 0.012 + u_treble * 0.008;
+          vec2 iuv = suvPx + grad * warpAmt;
+          vec3 img = imageAt(iuv);
+
+          float shape = clamp(fill * 0.8 + edge * 0.5, 0.0, 1.0);
+          float light = clamp(0.35 + 0.65 * mc + u_level * 0.15, 0.0, 1.0);
+          vec3 lit = img * light;
+          vec3 edgeLight = vec3(edge) * (0.03 + u_treble * 0.08);
+          col = mix(img * 0.72, lit + edgeLight, shape);
+        }
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `;
+
+    function compileShader(type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const log = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error(log || "Shader compile error");
+      }
+      return shader;
+    }
+
+    function createProgram(vsSrc, fsSrc) {
+      const vs = compileShader(gl.VERTEX_SHADER, vsSrc);
+      const fs = compileShader(gl.FRAGMENT_SHADER, fsSrc);
+      const program = gl.createProgram();
+      gl.attachShader(program, vs);
+      gl.attachShader(program, fs);
+      gl.linkProgram(program);
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
+
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program) || "Program link error");
+      }
+      return program;
+    }
+
+    const posBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([
+        -1, -1,
+        1, -1,
+        -1, 1,
+        -1, 1,
+        1, -1,
+        1, 1,
+      ]),
+      gl.STATIC_DRAW
+    );
+
+    let baseProgram = null;
+    let postProgram = null;
+    let uResolution = null;
+    let uMouse = null;
+    let uTime = null;
+    let uBass = null;
+    let uMid = null;
+    let uTreble = null;
+    let uLevel = null;
+    let uImage = null;
+    let uHasImage = null;
+    let uImageSize = null;
+    let uDistortionStrength = null;
+    let uDistortionSpeed = null;
+    let uPrevFrame = null;
+    let postUResolution = null;
+    let postUTime = null;
+    let postUScene = null;
+    let postUPrevScene = null;
+    let postUFeedback = null;
+    let postUImage = null;
+    let postUBass = null;
+    let postUMid = null;
+    let postUTreble = null;
+    let postULevel = null;
+    let postUHasImage = null;
+    let postUImageSize = null;
+    let postUKaleido = null;
+    let postUInfzoom = null;
+    let postUEdge = null;
+    let postUBloom = null;
+    let postUFeedbackAmt = null;
+    let postUSceneMix = null;
+    let currentShaderIndex = 0;
+    let baseTarget = null;
+    let transitionTexture = null;
+    let feedbackTexture = null;
+    let targetW = 0;
+    let targetH = 0;
+    let shaderTransitionStart = -1;
+    const SHADER_TRANSITION_SEC = 0.75;
+
+    function bindUniforms() {
+      uResolution = gl.getUniformLocation(baseProgram, "resolution");
+      uMouse = gl.getUniformLocation(baseProgram, "mouse");
+      uTime = gl.getUniformLocation(baseProgram, "time");
+      uBass = gl.getUniformLocation(baseProgram, "u_bass");
+      uMid = gl.getUniformLocation(baseProgram, "u_mid");
+      uTreble = gl.getUniformLocation(baseProgram, "u_treble");
+      uLevel = gl.getUniformLocation(baseProgram, "u_level");
+      uImage = gl.getUniformLocation(baseProgram, "u_image");
+      uHasImage = gl.getUniformLocation(baseProgram, "u_hasImage");
+      uImageSize = gl.getUniformLocation(baseProgram, "u_imageSize");
+      uDistortionStrength = gl.getUniformLocation(baseProgram, "u_distortionStrength");
+      uDistortionSpeed = gl.getUniformLocation(baseProgram, "u_distortionSpeed");
+      uPrevFrame = gl.getUniformLocation(baseProgram, "u_prevFrame");
+    }
+
+    function beginShaderTransition() {
+      if (!baseTarget || !transitionTexture || targetW < 1 || targetH < 1) {
+        shaderTransitionStart = -1;
+        return;
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, baseTarget.fbo);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, transitionTexture);
+      gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, targetW, targetH);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      shaderTransitionStart = performance.now() * 0.001;
+    }
+
+    function getShaderTransitionMix(nowSec) {
+      shaderTransitionStart = -1;
+      return 1.0;
+    }
+
+    function useShader(index) {
+      const next = (index + FRAGMENT_LIBRARY.length) % FRAGMENT_LIBRARY.length;
+      const nextProgram = createProgram(vertexSrc, FRAGMENT_LIBRARY[next].src);
+      if (baseProgram) gl.deleteProgram(baseProgram);
+      baseProgram = nextProgram;
+      currentShaderIndex = next;
+      gl.useProgram(baseProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+      const aPos = gl.getAttribLocation(baseProgram, "a_pos");
+      gl.enableVertexAttribArray(aPos);
+      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+      bindUniforms();
+    }
+
+    function createRenderTarget(w, h) {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+      const fbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return { tex, fbo };
+    }
+
+    function ensureTargets(w, h) {
+      if (targetW === w && targetH === h && baseTarget && transitionTexture && feedbackTexture) return;
+      targetW = w;
+      targetH = h;
+      if (baseTarget) {
+        gl.deleteFramebuffer(baseTarget.fbo);
+        gl.deleteTexture(baseTarget.tex);
+      }
+      baseTarget = createRenderTarget(w, h);
+      if (transitionTexture) gl.deleteTexture(transitionTexture);
+      transitionTexture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, transitionTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      if (feedbackTexture) gl.deleteTexture(feedbackTexture);
+      feedbackTexture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, feedbackTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      shaderTransitionStart = -1;
+    }
+
+    function createPostProgram() {
+      postProgram = createProgram(vertexSrc, postFragmentSrc);
+      postUResolution = gl.getUniformLocation(postProgram, "resolution");
+      postUTime = gl.getUniformLocation(postProgram, "time");
+      postUScene = gl.getUniformLocation(postProgram, "u_scene");
+      postUPrevScene = gl.getUniformLocation(postProgram, "u_prev_scene");
+      postUFeedback = gl.getUniformLocation(postProgram, "u_feedback");
+      postUImage = gl.getUniformLocation(postProgram, "u_image");
+      postUBass = gl.getUniformLocation(postProgram, "u_bass");
+      postUMid = gl.getUniformLocation(postProgram, "u_mid");
+      postUTreble = gl.getUniformLocation(postProgram, "u_treble");
+      postULevel = gl.getUniformLocation(postProgram, "u_level");
+      postUHasImage = gl.getUniformLocation(postProgram, "u_hasImage");
+      postUImageSize = gl.getUniformLocation(postProgram, "u_imageSize");
+      postUKaleido = gl.getUniformLocation(postProgram, "u_kaleido");
+      postUInfzoom = gl.getUniformLocation(postProgram, "u_infzoom");
+      postUEdge = gl.getUniformLocation(postProgram, "u_edge");
+      postUBloom = gl.getUniformLocation(postProgram, "u_bloom");
+      postUFeedbackAmt = gl.getUniformLocation(postProgram, "u_feedback_amt");
+      postUSceneMix = gl.getUniformLocation(postProgram, "u_scene_mix");
+    }
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, MAX_DEVICE_DPR);
+      let w = Math.max(1, Math.floor(window.innerWidth * dpr));
+      let h = Math.max(1, Math.floor(window.innerHeight * dpr));
+
+      const pixelCount = w * h;
+      if (pixelCount < HD_MIN_PIXELS) {
+        const upscale = Math.sqrt(HD_MIN_PIXELS / pixelCount);
+        w = Math.max(1, Math.floor(w * upscale));
+        h = Math.max(1, Math.floor(h * upscale));
+      }
+
+      const limitScale = Math.min(1, MAX_RENDER_SIZE / Math.max(w, h));
+      w = Math.max(1, Math.floor(w * limitScale));
+      h = Math.max(1, Math.floor(h * limitScale));
+
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      ensureTargets(canvas.width, canvas.height);
+    }
+
+    window.addEventListener("resize", resize);
+    resize();
+
+    const audioEl = document.getElementById("audio");
+    const panel = document.querySelector(".panel");
+    const fileInput = document.getElementById("file");
+    const imageFileInput = document.getElementById("imageFile");
+    const playBtn = document.getElementById("playBtn");
+    const pauseBtn = document.getElementById("pauseBtn");
+    const downloadVideoBtn = document.getElementById("downloadVideoBtn");
+    const prevShaderBtn = document.getElementById("prevShaderBtn");
+    const nextShaderBtn = document.getElementById("nextShaderBtn");
+    const shaderSelect = document.getElementById("shaderSelect");
+    const isfInput = document.getElementById("isfInput");
+    const loadIsfBtn = document.getElementById("loadIsfBtn");
+    const storyPhase = document.getElementById("storyPhase");
+    const togglePanelBtn = document.getElementById("togglePanelBtn");
+    const fullscreenBtn = document.getElementById("fullscreenBtn");
+    const status = document.getElementById("status");
+    const progress = document.getElementById("progress");
+    const progressWrap = document.getElementById("progressWrap");
+    const currentTimeLabel = document.getElementById("currentTime");
+    const totalTimeLabel = document.getElementById("totalTime");
+
+    const bassFill = document.getElementById("bassFill");
+    const midFill = document.getElementById("midFill");
+    const trebleFill = document.getElementById("trebleFill");
+    const levelFill = document.getElementById("levelFill");
+    const meters = document.getElementById("meters");
+    const distortionStrengthInput = document.getElementById("distortionStrength");
+    const distortionSpeedInput = document.getElementById("distortionSpeed");
+    const distortionStrengthValue = document.getElementById("distortionStrengthValue");
+    const distortionSpeedValue = document.getElementById("distortionSpeedValue");
+
+    let audioCtx = null;
+    let analyser = null;
+    let freqData = null;
+    let sourceNode = null;
+    let recordDestination = null;
+    let hasImage = 0;
+    let imageSize = { width: 1, height: 1 };
+    let loadedAudioBaseName = "visualizer";
+    let exportRecorder = null;
+    let exportCanvasStream = null;
+    let exportMixedStream = null;
+    let exportAudioTrack = null;
+    let exportEndedHandler = null;
+    let exportChunks = [];
+    let exportMimeType = "";
+    let exportInProgress = false;
+    let distortionStrength = 0.22;
+    let distortionSpeed = 1.05;
+
+    function clampRange(v, lo, hi) {
+      return Math.max(lo, Math.min(hi, v));
+    }
+
+    function updateDistortionUI() {
+      distortionStrengthValue.textContent = distortionStrength.toFixed(3);
+      distortionSpeedValue.textContent = distortionSpeed.toFixed(3);
+    }
+
+    if (distortionStrengthInput) {
+      distortionStrength = clampRange(Number(distortionStrengthInput.value), 0, 1);
+      distortionStrengthInput.addEventListener("input", () => {
+        distortionStrength = clampRange(Number(distortionStrengthInput.value), 0, 1);
+        updateDistortionUI();
+      });
+    }
+
+    if (distortionSpeedInput) {
+      distortionSpeed = clampRange(Number(distortionSpeedInput.value), 0, 3);
+      distortionSpeedInput.addEventListener("input", () => {
+        distortionSpeed = clampRange(Number(distortionSpeedInput.value), 0, 3);
+        updateDistortionUI();
+      });
+    }
+
+    updateDistortionUI();
+
+    const imageTexture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([255, 255, 255, 255])
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    function rebuildShaderOptions() {
+      shaderSelect.innerHTML = "";
+      FRAGMENT_LIBRARY.forEach((shader, idx) => {
+        const option = document.createElement("option");
+        option.value = String(idx);
+        option.textContent = shader.name;
+        shaderSelect.appendChild(option);
+      });
+    }
+
+    function buildCompatShaderSource(rawSource) {
+      const src = String(rawSource || "").trim();
+      let body = src
+        .replace(/^\s*#version\s+300\s+es\s*$/gm, "")
+        .replace(/^\s*#ifdef\s+GL_ES[\s\S]*?#endif\s*/m, "")
+        .replace(/^\s*precision\s+\w+\s+float\s*;\s*/gm, "")
+        .replace(/^\s*uniform\s+(?:float|vec2)\s+(?:time|mouse)\s*;\s*/gm, "")
+        .replace(/^\s*uniform\s+vec2\s+resolution\s*;\s*/gm, "")
+        .replace(/^\s*uniform\s+float\s+u_(?:bass|mid|treble|level|distortionStrength|distortionSpeed)\s*;\s*/gm, "")
+        .replace(/^\s*out\s+vec4\s+\w+\s*;\s*$/gm, "");
+
+      const extensionLines = [];
+      body = body
+        .split("\n")
+        .filter((line) => {
+          if (/^\s*#extension\b/.test(line)) {
+            extensionLines.push(line);
+            return false;
+          }
+          return true;
+        })
+        .join("\n");
+
+      body = body
+        .replace(/\bTIME\b/g, "time")
+        .replace(/\bRENDERSIZE\b/g, "resolution")
+        .replace(/\bisf_FragNormCoord\b/g, "(gl_FragCoord.xy / resolution.xy)")
+        .replace(/\biTime\b/g, "time")
+        .replace(/\biResolution\b/g, "resolution");
+
+      const preamble = `
+${extensionLines.join("\n")}
+precision highp float;
+uniform float time;
+uniform vec2 resolution;
+uniform vec2 mouse;
+uniform float u_bass;
+uniform float u_mid;
+uniform float u_treble;
+uniform float u_level;
+uniform float u_distortionStrength;
+uniform float u_distortionSpeed;
+uniform sampler2D u_image;
+uniform float u_hasImage;
+uniform vec2 u_imageSize;
+uniform sampler2D u_prevFrame;
+varying vec2 surfacePosition;
+#define TIME time
+#define RENDERSIZE resolution
+#define u_time time
+#define u_resolution resolution
+#define u_mouse mouse
+#define oldBuffer u_prevFrame
+#define IMG_THIS_PIXEL(img) texture2D((img), gl_FragCoord.xy / resolution.xy)
+#define IMG_NORM_PIXEL(img, uv) texture2D((img), clamp((uv), 0.0, 1.0))
+#define IMG_PIXEL(img, px) texture2D((img), clamp((px) / resolution.xy, 0.0, 1.0))
+      `;
+
+      const hasMain = /\bvoid\s+main\s*\(/.test(body);
+      const hasMainImage = /\bvoid\s+mainImage\s*\(/.test(body);
+      if (hasMain) return `${preamble}\n${body}`;
+      if (hasMainImage) {
+        return `${preamble}\n${body}\nvoid main(void){ vec4 fragColor = vec4(0.0); mainImage(fragColor, gl_FragCoord.xy); gl_FragColor = fragColor; }`;
+      }
+      return `${preamble}\n${body}\nvoid main(void){ gl_FragColor = vec4(1.0,0.0,1.0,1.0); }`;
+    }
+
+    function upsertCustomShader(name, source) {
+      const built = buildCompatShaderSource(source);
+      const idx = FRAGMENT_LIBRARY.findIndex((s) => s.name === name);
+      if (idx >= 0) FRAGMENT_LIBRARY[idx].src = built;
+      else FRAGMENT_LIBRARY.push({ name, src: built });
+      rebuildShaderOptions();
+      const nextIdx = idx >= 0 ? idx : (FRAGMENT_LIBRARY.length - 1);
+      tryUseShader(nextIdx);
+    }
+
+    rebuildShaderOptions();
+
+    function syncShaderUI() {
+      shaderSelect.value = String(currentShaderIndex);
+    }
+
+    function tryUseShader(index) {
+      try {
+        useShader(index);
+        syncShaderUI();
+        status.textContent = `Shader: ${FRAGMENT_LIBRARY[currentShaderIndex].name}`;
+      } catch (err) {
+        status.textContent = `Shader compile failed: ${String(err.message || err)}`;
+      }
+    }
+
+    shaderSelect.addEventListener("change", () => {
+      tryUseShader(Number(shaderSelect.value));
+    });
+    prevShaderBtn.addEventListener("click", () => {
+      tryUseShader(currentShaderIndex - 1);
+    });
+    nextShaderBtn.addEventListener("click", () => {
+      tryUseShader(currentShaderIndex + 1);
+    });
+
+    loadIsfBtn.addEventListener("click", () => {
+      const code = isfInput.value.trim();
+      if (!code) {
+        status.textContent = "Paste ISF/GLSL source first.";
+        return;
+      }
+      upsertCustomShader("Custom ISF", code);
+      status.textContent = "Loaded Custom ISF shader.";
+    });
+
+    createPostProgram();
+    tryUseShader(0);
+
+    const smooth = {
+      bass: 0,
+      mid: 0,
+      treble: 0,
+      level: 0,
+    };
+    const bandDynamics = {
+      bass: { floor: 0.03, peak: 0.26, prevNorm: 0.0 },
+      mid: { floor: 0.03, peak: 0.22, prevNorm: 0.0 },
+      treble: { floor: 0.02, peak: 0.2, prevNorm: 0.0 },
+      level: { floor: 0.03, peak: 0.22, prevNorm: 0.0 },
+    };
+    const fxDrive = {
+      kaleido: 0,
+      zoom: 0,
+    };
+    let sensitivity = 0.35;
+    function clamp01(v) {
+      return Math.max(0, Math.min(1, v));
+    }
+
+    function powSafe(v, p) {
+      return Math.pow(Math.max(0, v), p);
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function smoothPeak(current, target, attack, release) {
+      const t = target > current ? attack : release;
+      return lerp(current, target, t);
+    }
+
+    function softKnee(v, knee, ratio) {
+      if (v <= knee) return v;
+      return knee + (v - knee) / ratio;
+    }
+
+    function normalizeBand(name, raw) {
+      const state = bandDynamics[name];
+      if (!state) return { norm: clamp01(raw), rise: 0 };
+
+      // Floor adapts faster downward and slower upward to ignore constant rumble.
+      const floorRate = raw < state.floor ? 0.18 : 0.01;
+      // Peak adapts quickly on transients and decays slowly to preserve headroom.
+      const peakRate = raw > state.peak ? 0.18 : 0.006;
+
+      state.floor = lerp(state.floor, raw, floorRate);
+      state.peak = lerp(state.peak, raw, peakRate);
+      state.peak = Math.max(state.peak, state.floor + 0.085);
+
+      const norm = clamp01((raw - state.floor) / (state.peak - state.floor));
+      const rise = Math.max(0, norm - state.prevNorm);
+      state.prevNorm = norm;
+
+      return { norm, rise };
+    }
+
+    const STORY_TIMELINE = [
+      {
+        name: "intro",
+        start: 0.0,
+        end: 0.16,
+        shader: "Classic Sandbox",
+        reaction: 0.58,
+        fx: { kaleido: 0.25, zoom: 0.7, edge: 0.0, bloom: 0.25, feedback: 0.12 },
+      },
+      {
+        name: "build",
+        start: 0.16,
+        end: 0.36,
+        shader: "Zoom RGB",
+        reaction: 0.74,
+        fx: { kaleido: 0.45, zoom: 0.85, edge: 0.1, bloom: 0.45, feedback: 0.18 },
+      },
+      {
+        name: "lift",
+        start: 0.36,
+        end: 0.62,
+        shader: "Classic Sandbox",
+        reaction: 0.92,
+        fx: { kaleido: 0.65, zoom: 1.0, edge: 0.2, bloom: 0.6, feedback: 0.25 },
+      },
+      {
+        name: "drop",
+        start: 0.62,
+        end: 0.82,
+        shader: "Bermarte Fractal",
+        reaction: 1.05,
+        fx: { kaleido: 0.95, zoom: 1.0, edge: 0.55, bloom: 0.78, feedback: 0.42 },
+      },
+      {
+        name: "break",
+        start: 0.82,
+        end: 0.94,
+        shader: "Mobius Menger Fall",
+        reaction: 0.84,
+        fx: { kaleido: 1.0, zoom: 0.9, edge: 0.4, bloom: 0.56, feedback: 0.3 },
+      },
+      {
+        name: "outro",
+        start: 0.94,
+        end: 1.001,
+        shader: "Classic Sandbox",
+        reaction: 0.6,
+        fx: { kaleido: 0.2, zoom: 0.72, edge: 0.05, bloom: 0.28, feedback: 0.16 },
+      },
+    ];
+
+    const STORY_DEFAULT = {
+      reaction: 1.0,
+      fx: { kaleido: 1.0, zoom: 1.0, edge: 1.0, bloom: 1.0, feedback: 1.0 },
+    };
+    let storySegmentIndex = -1;
+
+    function mixStoryFx(a, b, t) {
+      return {
+        kaleido: lerp(a.kaleido, b.kaleido, t),
+        zoom: lerp(a.zoom, b.zoom, t),
+        edge: lerp(a.edge, b.edge, t),
+        bloom: lerp(a.bloom, b.bloom, t),
+        feedback: lerp(a.feedback, b.feedback, t),
+      };
+    }
+
+    function getStoryDrive(progress01, levels) {
+      const hasDuration = Number.isFinite(audioEl.duration) && audioEl.duration > 0;
+      if (!hasDuration) {
+        storyPhase.textContent = "phase: waiting";
+        storySegmentIndex = -1;
+        return STORY_DEFAULT;
+      }
+
+      let idx = STORY_TIMELINE.findIndex((segment) => progress01 >= segment.start && progress01 < segment.end);
+      if (idx < 0) idx = STORY_TIMELINE.length - 1;
+      const segment = STORY_TIMELINE[idx];
+      const next = STORY_TIMELINE[Math.min(idx + 1, STORY_TIMELINE.length - 1)];
+      const span = Math.max(segment.end - segment.start, 0.00001);
+      const local = clamp01((progress01 - segment.start) / span);
+      const blend = local * local * (3.0 - 2.0 * local);
+      const mixT = idx === STORY_TIMELINE.length - 1 ? 0.0 : blend;
+
+      if (idx !== storySegmentIndex) {
+        storySegmentIndex = idx;
+        storyPhase.textContent = `phase: ${segment.name}`;
+      }
+
+      const fx = mixStoryFx(segment.fx, next.fx, mixT);
+      const reactionBase = lerp(segment.reaction, next.reaction, mixT);
+      const beatLift = 0.86 + levels.bass * 0.2 + levels.level * 0.15;
+      const reaction = Math.min(1.25, Math.max(0.45, reactionBase * beatLift));
+      return { reaction, fx };
+    }
+
+    function getStorySensitivity(progress01) {
+      const hasDuration = Number.isFinite(audioEl.duration) && audioEl.duration > 0;
+      if (!hasDuration) return 0.42;
+
+      let idx = STORY_TIMELINE.findIndex((segment) => progress01 >= segment.start && progress01 < segment.end);
+      if (idx < 0) idx = STORY_TIMELINE.length - 1;
+      const segment = STORY_TIMELINE[idx];
+      const next = STORY_TIMELINE[Math.min(idx + 1, STORY_TIMELINE.length - 1)];
+      const span = Math.max(segment.end - segment.start, 0.00001);
+      const local = clamp01((progress01 - segment.start) / span);
+      const blend = local * local * (3.0 - 2.0 * local);
+      const mixT = idx === STORY_TIMELINE.length - 1 ? 0.0 : blend;
+      const reactionBase = lerp(segment.reaction, next.reaction, mixT);
+      // Storyline-driven automatic sensitivity curve.
+      return clamp01(0.15 + reactionBase * 0.62);
+    }
+
+    function freqToBin(freq, sampleRate, fftSize) {
+      const nyquist = sampleRate / 2;
+      return Math.max(0, Math.min((fftSize / 2) - 1, Math.round((freq / nyquist) * (fftSize / 2))));
+    }
+
+    function avgBand(data, from, to) {
+      let sum = 0;
+      let count = 0;
+      for (let i = from; i <= to; i++) {
+        sum += data[i];
+        count++;
+      }
+      return count ? sum / count : 0;
+    }
+
+    function setupAudioGraph() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+
+      if (!sourceNode) {
+        sourceNode = audioCtx.createMediaElementSource(audioEl);
+        analyser = audioCtx.createAnalyser();
+        recordDestination = audioCtx.createMediaStreamDestination();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.7;
+        freqData = new Uint8Array(analyser.frequencyBinCount);
+
+        sourceNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        sourceNode.connect(recordDestination);
+      }
+    }
+
+    async function ensureAudioReady() {
+      setupAudioGraph();
+      if (audioCtx.state === "suspended") {
+        await audioCtx.resume();
+      }
+    }
+
+    function sanitizeBaseName(name) {
+      const raw = String(name || "visualizer").replace(/\.[^/.]+$/, "").trim();
+      const safe = raw.replace(/[^\w-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80);
+      return safe || "visualizer";
+    }
+
+    function pickRecorderMimeType() {
+      if (!window.MediaRecorder || typeof MediaRecorder.isTypeSupported !== "function") return "";
+      const candidates = [
+        "video/webm;codecs=vp9,opus",
+        "video/webm;codecs=vp8,opus",
+        "video/webm;codecs=h264,opus",
+        "video/webm",
+      ];
+      for (const type of candidates) {
+        if (MediaRecorder.isTypeSupported(type)) return type;
+      }
+      return "";
+    }
+
+    function resetExportState() {
+      if (exportEndedHandler) {
+        audioEl.removeEventListener("ended", exportEndedHandler);
+        exportEndedHandler = null;
+      }
+      if (exportRecorder && exportRecorder.state !== "inactive") {
+        try { exportRecorder.stop(); } catch {}
+      }
+      if (exportCanvasStream) {
+        exportCanvasStream.getTracks().forEach((track) => {
+          try { track.stop(); } catch {}
+        });
+      }
+      if (exportMixedStream) {
+        exportMixedStream.getTracks().forEach((track) => {
+          try { track.stop(); } catch {}
+        });
+      }
+      if (exportAudioTrack) {
+        try { exportAudioTrack.stop(); } catch {}
+      }
+      exportRecorder = null;
+      exportCanvasStream = null;
+      exportMixedStream = null;
+      exportAudioTrack = null;
+      exportChunks = [];
+      exportMimeType = "";
+      exportInProgress = false;
+      downloadVideoBtn.disabled = false;
+      downloadVideoBtn.textContent = "Download Video";
+    }
+
+    function finalizeVideoDownload() {
+      const chunks = exportChunks.slice();
+      const mime = exportMimeType || "video/webm";
+      resetExportState();
+      if (!chunks.length) {
+        status.textContent = "Video export failed: no data captured.";
+        return;
+      }
+
+      const blob = new Blob(chunks, { type: mime });
+      const url = URL.createObjectURL(blob);
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `${loadedAudioBaseName}-${ts}.webm`;
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      status.textContent = `Video downloaded: ${filename}`;
+    }
+
+    async function startVideoExport() {
+      if (exportInProgress) return;
+      if (!audioEl.src) {
+        status.textContent = "Load a song first.";
+        return;
+      }
+      if (!window.MediaRecorder) {
+        status.textContent = "Video export is not supported in this browser.";
+        return;
+      }
+
+      await ensureAudioReady();
+
+      if (!(Number.isFinite(audioEl.duration) && audioEl.duration > 0)) {
+        await new Promise((resolve, reject) => {
+          const onLoaded = () => {
+            audioEl.removeEventListener("error", onError);
+            resolve();
+          };
+          const onError = () => {
+            audioEl.removeEventListener("loadedmetadata", onLoaded);
+            reject(new Error("Audio metadata unavailable"));
+          };
+          audioEl.addEventListener("loadedmetadata", onLoaded, { once: true });
+          audioEl.addEventListener("error", onError, { once: true });
+        });
+      }
+
+      exportCanvasStream = canvas.captureStream(60);
+      exportMixedStream = new MediaStream();
+      const videoTrack = exportCanvasStream.getVideoTracks()[0];
+      if (!videoTrack) {
+        resetExportState();
+        status.textContent = "Video export failed: no canvas video track.";
+        return;
+      }
+      exportMixedStream.addTrack(videoTrack);
+
+      const sourceAudioTrack = recordDestination?.stream?.getAudioTracks?.()[0];
+      if (sourceAudioTrack) {
+        exportAudioTrack = sourceAudioTrack.clone ? sourceAudioTrack.clone() : sourceAudioTrack;
+        exportMixedStream.addTrack(exportAudioTrack);
+      }
+
+      exportMimeType = pickRecorderMimeType();
+      const options = {
+        videoBitsPerSecond: 14000000,
+        audioBitsPerSecond: 192000,
+      };
+      if (exportMimeType) options.mimeType = exportMimeType;
+
+      try {
+        exportRecorder = new MediaRecorder(exportMixedStream, options);
+      } catch {
+        exportRecorder = new MediaRecorder(exportMixedStream);
+        exportMimeType = exportRecorder.mimeType || "video/webm";
+      }
+
+      exportInProgress = true;
+      exportChunks = [];
+      downloadVideoBtn.disabled = true;
+      downloadVideoBtn.textContent = "Recording...";
+      status.textContent = "Recording video export...";
+
+      exportRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) exportChunks.push(event.data);
+      };
+      exportRecorder.onerror = () => {
+        status.textContent = "Video export error.";
+      };
+      exportRecorder.onstop = () => {
+        finalizeVideoDownload();
+      };
+
+      exportEndedHandler = () => {
+        if (exportRecorder && exportRecorder.state !== "inactive") {
+          exportRecorder.stop();
+        }
+      };
+      audioEl.addEventListener("ended", exportEndedHandler, { once: true });
+
+      audioEl.pause();
+      audioEl.currentTime = 0;
+      updateProgressUI();
+      exportRecorder.start(250);
+      await audioEl.play();
+    }
+
+    fileInput.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      if (exportInProgress && exportRecorder && exportRecorder.state !== "inactive") {
+        exportRecorder.stop();
+      }
+      const objectURL = URL.createObjectURL(file);
+      audioEl.src = objectURL;
+      loadedAudioBaseName = sanitizeBaseName(file.name);
+      progress.value = "0";
+      currentTimeLabel.textContent = "0:00";
+      totalTimeLabel.textContent = "0:00";
+      status.textContent = `Loaded: ${file.name}`;
+      await ensureAudioReady();
+      meters.classList.remove("hidden");
+      progressWrap.classList.remove("hidden");
+      downloadVideoBtn.hidden = false;
+      downloadVideoBtn.disabled = false;
+      downloadVideoBtn.textContent = "Download Video";
+    });
+
+    function loadImageToTexture(src, label, revokeURL = false) {
+      const img = new Image();
+      img.onload = () => {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        hasImage = 1;
+        imageSize = { width: img.naturalWidth || 1, height: img.naturalHeight || 1 };
+        status.textContent = `Image loaded: ${label}`;
+        if (revokeURL) URL.revokeObjectURL(src);
+      };
+      img.onerror = () => {
+        status.textContent = "Could not load image.";
+        if (revokeURL) URL.revokeObjectURL(src);
+      };
+      img.src = src;
+    }
+
+    imageFileInput.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const objectURL = URL.createObjectURL(file);
+      loadImageToTexture(objectURL, file.name, true);
+    });
+
+    loadImageToTexture("./logo_vector.svg", "logo_vector.svg");
+
+    togglePanelBtn.addEventListener("click", () => {
+      panel.classList.toggle("collapsed");
+      togglePanelBtn.textContent = panel.classList.contains("collapsed") ? "Expand" : "Minimize";
+    });
+
+    async function toggleFullscreen() {
+      const doc = document;
+      const el = document.documentElement;
+      const isFull = doc.fullscreenElement || doc.webkitFullscreenElement;
+      if (!isFull) {
+        if (el.requestFullscreen) {
+          await el.requestFullscreen();
+        } else if (el.webkitRequestFullscreen) {
+          el.webkitRequestFullscreen();
+        }
+        return;
+      }
+      if (doc.exitFullscreen) {
+        await doc.exitFullscreen();
+      } else if (doc.webkitExitFullscreen) {
+        doc.webkitExitFullscreen();
+      }
+    }
+
+    function updateFullscreenLabel() {
+      const isFull = document.fullscreenElement || document.webkitFullscreenElement;
+      fullscreenBtn.textContent = isFull ? "Windowed" : "Fullscreen";
+    }
+
+    fullscreenBtn.addEventListener("click", () => {
+      toggleFullscreen().catch(() => {
+        status.textContent = "Fullscreen not available in this browser.";
+      });
+    });
+
+    document.addEventListener("fullscreenchange", updateFullscreenLabel);
+    document.addEventListener("webkitfullscreenchange", updateFullscreenLabel);
+    updateFullscreenLabel();
+
+    playBtn.addEventListener("click", async () => {
+      try {
+        await ensureAudioReady();
+        await audioEl.play();
+        status.textContent = "Playing";
+      } catch {
+        status.textContent = "Select a song first.";
+      }
+    });
+
+    pauseBtn.addEventListener("click", () => {
+      audioEl.pause();
+      status.textContent = "Paused";
+    });
+
+    downloadVideoBtn.addEventListener("click", () => {
+      startVideoExport().catch((err) => {
+        resetExportState();
+        status.textContent = `Video export failed: ${String(err.message || err)}`;
+      });
+    });
+
+    const startTime = performance.now();
+
+    function sampleAudio() {
+      if (!analyser || !freqData || !audioCtx) {
+        return { bass: 0, mid: 0, treble: 0, level: 0 };
+      }
+
+      analyser.getByteFrequencyData(freqData);
+
+      const sr = audioCtx.sampleRate;
+      const fft = analyser.fftSize;
+
+      // Split bass into low and upper-bass so kick transients stand out more.
+      const bassLow = avgBand(freqData, freqToBin(24, sr, fft), freqToBin(90, sr, fft)) / 255;
+      const bassHigh = avgBand(freqData, freqToBin(90, sr, fft), freqToBin(180, sr, fft)) / 255;
+      const bassRaw = bassLow * 0.72 + bassHigh * 0.28;
+      const midRaw = avgBand(freqData, freqToBin(180, sr, fft), freqToBin(2200, sr, fft)) / 255;
+      const trebleRaw = avgBand(freqData, freqToBin(2200, sr, fft), freqToBin(12000, sr, fft)) / 255;
+      const levelRaw = avgBand(freqData, 0, freqData.length - 1) / 255;
+
+      const bassBand = normalizeBand("bass", bassRaw);
+      const midBand = normalizeBand("mid", midRaw);
+      const trebleBand = normalizeBand("treble", trebleRaw);
+      const levelBand = normalizeBand("level", levelRaw);
+
+      // Sensitivity stays user-controlled, but bass gets extra transient focus.
+      const sensBase = 0.45 + sensitivity * 1.05;
+      let bassTarget = powSafe(bassBand.norm, 0.9) * sensBase + bassBand.rise * (0.55 + sensitivity * 0.5);
+      let midTarget = powSafe(midBand.norm, 1.0) * (0.36 + sensitivity * 0.9) + midBand.rise * (0.3 + sensitivity * 0.25);
+      let trebleTarget = powSafe(trebleBand.norm, 1.05) * (0.34 + sensitivity * 0.92) + trebleBand.rise * (0.22 + sensitivity * 0.2);
+      let levelTarget = powSafe(levelBand.norm, 1.0) * (0.35 + sensitivity * 0.86);
+
+      // Soft limit high values so bars don't stick at 100%.
+      bassTarget = clamp01(softKnee(bassTarget, 0.76, 4.6));
+      midTarget = clamp01(softKnee(midTarget, 0.84, 3.8));
+      trebleTarget = clamp01(softKnee(trebleTarget, 0.86, 3.8));
+      levelTarget = clamp01(softKnee(levelTarget, 0.88, 4.0));
+
+      // Faster release on bass so it oscillates instead of staying pinned.
+      smooth.bass = smoothPeak(smooth.bass, bassTarget, 0.42, 0.3);
+      smooth.mid = smoothPeak(smooth.mid, midTarget, 0.34, 0.24);
+      smooth.treble = smoothPeak(smooth.treble, trebleTarget, 0.3, 0.2);
+      smooth.level = smoothPeak(smooth.level, levelTarget, 0.28, 0.2);
+
+      return smooth;
+    }
+
+    function updateMeters({ bass, mid, treble, level }) {
+      bassFill.style.width = `${(bass * 100).toFixed(1)}%`;
+      midFill.style.width = `${(mid * 100).toFixed(1)}%`;
+      trebleFill.style.width = `${(treble * 100).toFixed(1)}%`;
+      levelFill.style.width = `${(level * 100).toFixed(1)}%`;
+    }
+
+    function formatTime(sec) {
+      if (!Number.isFinite(sec) || sec < 0) return "0:00";
+      const s = Math.floor(sec);
+      const m = Math.floor(s / 60);
+      const rem = s % 60;
+      return `${m}:${String(rem).padStart(2, "0")}`;
+    }
+
+    function updateProgressUI() {
+      const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+      const current = Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
+      const ratio = duration > 0 ? current / duration : 0;
+      progress.value = String(Math.round(ratio * 1000));
+      currentTimeLabel.textContent = formatTime(current);
+      totalTimeLabel.textContent = formatTime(duration);
+    }
+
+    progress.addEventListener("input", () => {
+      const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+      if (!duration) return;
+      const ratio = Number(progress.value) / 1000;
+      audioEl.currentTime = ratio * duration;
+      updateProgressUI();
+    });
+
+    audioEl.addEventListener("loadedmetadata", updateProgressUI);
+    audioEl.addEventListener("timeupdate", updateProgressUI);
+    audioEl.addEventListener("ended", updateProgressUI);
+    audioEl.addEventListener("error", () => {
+      status.textContent = "Could not play this audio file.";
+    });
+
+    function render() {
+      resize();
+      const t = (performance.now() - startTime) * 0.001;
+      const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+      const current = Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
+      const progress01 = duration > 0 ? clamp01(current / duration) : 0;
+      sensitivity = getStorySensitivity(progress01);
+      const levels = sampleAudio();
+      updateMeters(levels);
+      const storyDrive = getStoryDrive(progress01, levels);
+
+      const subtle = (0.14 + sensitivity * 0.28) * storyDrive.reaction;
+      const bassFx = clamp01(levels.bass * subtle);
+      const midFx = clamp01(levels.mid * subtle);
+      const trebleFx = clamp01(levels.treble * subtle);
+      const levelFx = clamp01(levels.level * subtle);
+      // Less jumpy effect drivers with fixed mapping: bass -> kaleido, mid -> zoom.
+      const kaleidoTarget = clamp01(storyDrive.fx.kaleido * (0.1 + bassFx * 1.18));
+      const zoomTarget = clamp01(storyDrive.fx.zoom * (0.1 + midFx * 1.18));
+      fxDrive.kaleido = smoothPeak(fxDrive.kaleido, kaleidoTarget, 0.2, 0.14);
+      fxDrive.zoom = smoothPeak(fxDrive.zoom, zoomTarget, 0.2, 0.14);
+      const sceneMix = getShaderTransitionMix(t);
+
+      // Pass 1: base selected shader -> offscreen scene target
+      gl.bindFramebuffer(gl.FRAMEBUFFER, baseTarget ? baseTarget.fbo : null);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.useProgram(baseProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+      const basePos = gl.getAttribLocation(baseProgram, "a_pos");
+      gl.enableVertexAttribArray(basePos);
+      gl.vertexAttribPointer(basePos, 2, gl.FLOAT, false, 0, 0);
+
+      if (uResolution) gl.uniform2f(uResolution, canvas.width, canvas.height);
+      const mouseX = 0.22 + midFx * 0.28;
+      const mouseY = 0.22 + bassFx * 0.28;
+      if (uMouse) gl.uniform2f(uMouse, mouseX, mouseY);
+      if (uTime) gl.uniform1f(uTime, t);
+      if (uBass) gl.uniform1f(uBass, bassFx);
+      if (uMid) gl.uniform1f(uMid, midFx);
+      if (uTreble) gl.uniform1f(uTreble, trebleFx);
+      if (uLevel) gl.uniform1f(uLevel, levelFx);
+      if (uDistortionStrength) gl.uniform1f(uDistortionStrength, distortionStrength);
+      if (uDistortionSpeed) gl.uniform1f(uDistortionSpeed, distortionSpeed);
+      if (uImage || uHasImage || uImageSize) {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+      }
+      if (uImage) gl.uniform1i(uImage, 0);
+      if (uHasImage) gl.uniform1f(uHasImage, hasImage);
+      if (uImageSize) gl.uniform2f(uImageSize, imageSize.width, imageSize.height);
+      if (uPrevFrame) {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, feedbackTexture);
+        gl.uniform1i(uPrevFrame, 1);
+      }
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      // Pass 2/3: post stack (kaleido/zoom/edge/bloom/feedback) -> screen
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.useProgram(postProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+      const postPos = gl.getAttribLocation(postProgram, "a_pos");
+      gl.enableVertexAttribArray(postPos);
+      gl.vertexAttribPointer(postPos, 2, gl.FLOAT, false, 0, 0);
+
+      if (postUResolution) gl.uniform2f(postUResolution, canvas.width, canvas.height);
+      if (postUTime) gl.uniform1f(postUTime, t);
+      if (postUBass) gl.uniform1f(postUBass, bassFx);
+      if (postUMid) gl.uniform1f(postUMid, midFx);
+      if (postUTreble) gl.uniform1f(postUTreble, trebleFx);
+      if (postULevel) gl.uniform1f(postULevel, levelFx);
+      if (postUSceneMix) gl.uniform1f(postUSceneMix, sceneMix);
+      if (postUHasImage) gl.uniform1f(postUHasImage, hasImage);
+      if (postUImageSize) gl.uniform2f(postUImageSize, imageSize.width, imageSize.height);
+      if (postUKaleido) gl.uniform1f(postUKaleido, fxDrive.kaleido);
+      if (postUInfzoom) gl.uniform1f(postUInfzoom, fxDrive.zoom);
+      if (postUEdge) {
+        const edgeDrive = clamp01((0.16 + trebleFx * 2.1 + midFx * 1.1 + levelFx * 0.6) * storyDrive.fx.edge);
+        gl.uniform1f(postUEdge, edgeDrive);
+      }
+      if (postUBloom) gl.uniform1f(postUBloom, clamp01(storyDrive.fx.bloom));
+      if (postUFeedbackAmt) {
+        const feedbackAmt = clamp01((0.05 + levelFx * 0.22 + bassFx * 0.12) * storyDrive.fx.feedback);
+        gl.uniform1f(postUFeedbackAmt, feedbackAmt);
+      }
+
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, baseTarget ? baseTarget.tex : null);
+      if (postUScene) gl.uniform1i(postUScene, 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, feedbackTexture);
+      if (postUFeedback) gl.uniform1i(postUFeedback, 1);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+      if (postUImage) gl.uniform1i(postUImage, 2);
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D, transitionTexture ? transitionTexture : (baseTarget ? baseTarget.tex : null));
+      if (postUPrevScene) gl.uniform1i(postUPrevScene, 3);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      // Keep last composited frame for feedback pass on next tick.
+      if (feedbackTexture) {
+        gl.bindTexture(gl.TEXTURE_2D, feedbackTexture);
+        gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, canvas.width, canvas.height);
+      }
+
+      requestAnimationFrame(render);
+    }
+
+    render();
+  </script>
+</body>
+</html>
